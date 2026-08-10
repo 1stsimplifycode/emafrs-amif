@@ -48,7 +48,9 @@ alembic>=1.13
 apscheduler>=3.10      # background workers / scheduled jobs
 
 # --- MCP helper server ---
-mcp>=1.2
+# Uses mcp.server.mcpserver.MCPServer (current API as of mcp 2.0.0 -- the older
+# mcp.server.fastmcp.FastMCP entry point was renamed/restructured in this release).
+mcp>=2.0
 
 # --- Visualization ---
 matplotlib>=3.8

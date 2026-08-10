@@ -60,6 +60,17 @@ Compute target for this reconstruction is **CPU-only** — model choices, fine-t
 benchmarking are all sized accordingly (see `docs/MODEL_CARD.md` and `configs/nlp_models.yaml`
 once populated).
 
+### Helper MCP server (dev aid, not part of the research system)
+
+```bash
+python -m emafrs.mcp_server
+```
+
+Exposes the DAL (yfinance, Alpha Vantage, Finnhub, NewsAPI, YouTube, FRED, SEC EDGAR) plus
+project-inspection tools (cache stats, docs listing, git status, test runner) as MCP tools
+over stdio, for use from any MCP client while building/debugging this repo. Point your MCP
+client config at `python -m emafrs.mcp_server` run from the repo root with `.venv` active.
+
 ## Repository layout
 
 ```
