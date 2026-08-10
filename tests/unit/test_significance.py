@@ -1,6 +1,12 @@
+import numpy as np
 import pytest
 
-from emafrs.experiments.significance import compare_paired_results, confidence_interval
+from emafrs.experiments.significance import (
+    compare_paired_results,
+    confidence_interval,
+    one_way_anova_f,
+    permutation_test_anova,
+)
 
 
 def test_compare_paired_results_detects_clear_difference():
@@ -36,3 +42,38 @@ def test_confidence_interval_degenerate_single_value():
     mean, lo, hi = confidence_interval([0.5])
     assert mean == 0.5
     assert lo != lo  # NaN
+
+
+def test_one_way_anova_f_zero_for_identical_group_means_and_spread():
+    values = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    groups = np.array([1, 1, 1, 2, 2, 2])
+    assert one_way_anova_f(values, groups) == 0.0
+
+
+def test_one_way_anova_f_large_for_clearly_separated_groups():
+    rng = np.random.default_rng(0)
+    group_a = rng.normal(0.0, 0.01, size=30)
+    group_b = rng.normal(5.0, 0.01, size=30)
+    values = np.concatenate([group_a, group_b])
+    groups = np.array([1] * 30 + [2] * 30)
+    f = one_way_anova_f(values, groups)
+    assert f > 1000  # tiny within-group spread, huge between-group gap
+
+
+def test_permutation_test_anova_significant_for_clearly_separated_groups():
+    rng = np.random.default_rng(1)
+    group_a = rng.normal(0.0, 0.01, size=30)
+    group_b = rng.normal(5.0, 0.01, size=30)
+    values = np.concatenate([group_a, group_b])
+    groups = np.array([1] * 30 + [2] * 30)
+    result = permutation_test_anova(values, groups, n_permutations=500, seed=0)
+    assert result.p_value < 0.01
+    assert result.between_group_variance > result.mean_within_group_variance
+
+
+def test_permutation_test_anova_not_significant_for_random_labels_on_homogeneous_data():
+    rng = np.random.default_rng(2)
+    values = rng.normal(0.0, 1.0, size=60)  # no real group structure at all
+    groups = rng.integers(0, 3, size=60)
+    result = permutation_test_anova(values, groups, n_permutations=500, seed=0)
+    assert result.p_value > 0.05

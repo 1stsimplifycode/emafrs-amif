@@ -63,6 +63,64 @@ def compare_paired_results(
     )
 
 
+def one_way_anova_f(values: np.ndarray, groups: np.ndarray) -> float:
+    """One-way ANOVA F-statistic: ratio of between-group to within-group variance
+    (both mean-square-normalized by degrees of freedom). Implemented directly (not just
+    calling scipy) so it can be recomputed cheaply inside a permutation loop without
+    scipy's per-call overhead of re-validating/re-splitting groups each time."""
+    unique_groups = np.unique(groups)
+    grand_mean = values.mean()
+    ss_between = sum(
+        (groups == g).sum() * (values[groups == g].mean() - grand_mean) ** 2 for g in unique_groups
+    )
+    ss_within = sum(((values[groups == g] - values[groups == g].mean()) ** 2).sum() for g in unique_groups)
+    df_between = len(unique_groups) - 1
+    df_within = len(values) - len(unique_groups)
+    if ss_within == 0 or df_within <= 0:
+        return float("inf") if ss_between > 0 else 0.0
+    return (ss_between / df_between) / (ss_within / df_within)
+
+
+@dataclass
+class PermutationAnovaResult:
+    observed_f: float
+    p_value: float
+    n_permutations: int
+    between_group_variance: float
+    mean_within_group_variance: float
+
+
+def permutation_test_anova(
+    values: np.ndarray, groups: np.ndarray, n_permutations: int = 5000, seed: int = 0
+) -> PermutationAnovaResult:
+    """Tests whether GROUPS explain more variance in VALUES than chance grouping would,
+    without assuming normality (unlike scipy's parametric f_oneway p-value, which this
+    does not replace but can be cross-referenced against) -- appropriate when group sizes
+    are small/unequal, as with per-regime sample counts in this project's real data.
+    p_value = fraction of label-shuffled F-statistics >= the observed F-statistic."""
+    values = np.asarray(values, dtype=float)
+    groups = np.asarray(groups)
+    observed_f = one_way_anova_f(values, groups)
+
+    rng = np.random.default_rng(seed)
+    null_f = np.empty(n_permutations)
+    for i in range(n_permutations):
+        null_f[i] = one_way_anova_f(values, rng.permutation(groups))
+    p_value = float((null_f >= observed_f).mean())
+
+    unique_groups = np.unique(groups)
+    group_means = [values[groups == g].mean() for g in unique_groups]
+    group_vars = [values[groups == g].var() for g in unique_groups]
+
+    return PermutationAnovaResult(
+        observed_f=float(observed_f),
+        p_value=p_value,
+        n_permutations=n_permutations,
+        between_group_variance=float(np.var(group_means)),
+        mean_within_group_variance=float(np.mean(group_vars)),
+    )
+
+
 def confidence_interval(values: list[float], confidence: float = 0.95) -> tuple[float, float, float]:
     """Returns (mean, lower, upper) using a t-distribution CI -- appropriate for the small
     sample sizes (a handful of folds/seeds) typical in this project's experiments, rather

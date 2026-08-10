@@ -99,13 +99,17 @@ with regime severity but F1 stays low throughout, and — consistent with the fi
 already logged in `docs/PDF_TO_IMPLEMENTATION_TRACEABILITY.md` row #19, and now confirmed
 across two independent real runs on different date windows — the mean financial-modality
 fusion weight stays within a narrow 0.502-0.518 band across ALL FOUR observed regimes
-(including the previously-excluded Extreme regime): RAMA's gate is not meaningfully
-regime-adaptive in this trained model, even though the underlying mechanism is proven
-capable of it in isolation
+(including the previously-excluded Extreme regime): RAMA's gate shows only a SMALL
+absolute range of regime-dependent adjustment in this trained model, even though the
+underlying mechanism is proven capable of much larger differentiation in isolation
 (`tests/unit/test_fusion_models.py::test_rama_weights_differ_across_regimes`). Seeing the
 same near-flat 0.50-0.52 band on a second, independently-trained run (different data
 window, same seed=42) upgrades this from "one run's fluke" to a reproducible property of
-how this model trains on this data — see the root-cause investigation below.
+how this model trains on this data — see the root-cause investigation below. **Important
+precision, added during remediation**: "small absolute range" is not the same claim as
+"no real effect" — a statistical significance test (below, after the root-cause
+investigation) found this small range IS a real, non-random signal, not noise. Both facts
+are true simultaneously and are reported together, not conflated.
 
 **FAILURE → ROOT CAUSE → CORRECTION → RE-EVALUATE loop for the flat gate (real, not
 hypothetical)**
@@ -155,6 +159,42 @@ the mechanism (which IS proven capable of differentiation given a synthetic data
 genuine regime-modality relationship, per the passing unit test) and not fixable by the
 two most obvious training-side interventions, both of which were actually tried. The
 weight-decay exclusion is kept in `train.py` regardless (it is a defensible, harmless
+practice on its own merits) but is explicitly not claimed to have fixed anything here.
+
+**Statistical significance test (added during audit remediation) — an important
+correction to the framing above.** "The absolute range is small" was previously reported
+in a way that could be read as "there is no real effect." That is a distinct claim,
+directly testable, and was tested: `scripts/run_rama_gate_significance_test.py` runs a
+one-way ANOVA (financial-modality weight, grouped by regime) on the real test set, with
+significance assessed via a 5000-shuffle permutation test (not a normality assumption,
+given small/unequal per-regime sample sizes) rather than just eyeballing the range.
+
+| | |
+|---|---|
+| Per-regime mean weight | Regime 1: 0.5019 (n=27), Regime 2: 0.5117 (n=71), Regime 3: 0.5086 (n=45), Regime 4: 0.5179 (n=17) |
+| Between-regime variance (of the 4 means) | 0.0000335 |
+| Mean within-regime variance (of per-row weight) | 0.00000098 |
+| Between/within ratio | 34.0 |
+| Observed F-statistic | 1644.6 |
+| Permutation p-value (5000 shuffles) | **<0.0002** (0 of 5000 shuffles matched or exceeded the observed F) |
+
+**Verdict: the regime-to-regime differences ARE statistically significant** — far more
+extreme than random regime-label shuffling ever produced. This is possible despite a tiny
+absolute weight range (0.502-0.518) because the within-regime variance is even more
+extreme: the fusion weight is very nearly CONSTANT within a given regime (std as low as
+0.0001), a direct consequence of RAMA's gate being a deterministic function of the regime
+posterior alone (`regime_probs @ self.gate`) — so even a small between-regime mean
+difference stands out sharply against that near-zero noise floor. **Correct, precise
+conclusion, superseding the earlier "not meaningfully regime-adaptive" framing**: RAMA HAS
+learned a real, reproducible (non-chance), regime-dependent adjustment to its fusion
+weights on this data — but the SUBSTANTIVE size of that adjustment (a ~1.6 percentage
+point range) is small relative to what the PDF's original design intent (or the
+synthetic unit test demonstrating the mechanism's capability) would suggest. Statistical
+significance and practical/substantive significance are different questions with
+different answers here, and both are reported rather than collapsing them into one
+verdict. This does not overturn the root-cause conclusion above (this dataset's regimes
+do not carry LARGE differential modality-reliability information) — it refines it: they
+carry a real but small amount.
 practice on its own merits) but is explicitly not claimed to have fixed anything here.
 
 ### Calibration
