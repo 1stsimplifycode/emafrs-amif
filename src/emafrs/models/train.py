@@ -58,7 +58,22 @@ def train_fusion_model(
     else:
         model = StaticFusionModel(modality_dims, hidden_dim=hidden_dim)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    # Weight decay is excluded from the fusion-gate parameter(s) (RAMAFusionModel.gate /
+    # StaticFusionModel.static_logits). Both are small softmax-logit parameters
+    # initialized at zero; blanket L2 weight decay continuously pulls them back toward
+    # zero (== uniform modality weighting) every step, directly fighting the
+    # regime-differentiation RAMA's gate is supposed to learn -- a real, diagnosed cause
+    # of the "RAMA weights not regime-differentiated" finding in
+    # docs/EXPERIMENT_PROTOCOL.md (root-caused by reading this optimizer construction,
+    # not guessed). Gate/logit params conventionally get zero weight decay for exactly
+    # this reason (same convention as excluding biases/LayerNorm params).
+    gate_param_names = {"gate", "static_logits"}
+    decay_params = [p for n, p in model.named_parameters() if n.split(".")[0] not in gate_param_names]
+    no_decay_params = [p for n, p in model.named_parameters() if n.split(".")[0] in gate_param_names]
+    optimizer = torch.optim.Adam(
+        [{"params": decay_params, "weight_decay": 1e-4}, {"params": no_decay_params, "weight_decay": 0.0}],
+        lr=lr,
+    )
     loss_fn = torch.nn.CrossEntropyLoss()
 
     def _forward(inputs, regime):

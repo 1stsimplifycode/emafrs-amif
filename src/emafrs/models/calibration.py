@@ -45,6 +45,63 @@ def fit_regime_temperature(
         return torch.nn.functional.softplus(raw_temp) + 1e-3
 
 
+def fit_global_temperature(logits: torch.Tensor, labels: torch.Tensor, lr: float = 0.01, max_iter: int = 200) -> torch.Tensor:
+    """Single temperature fit across ALL validation rows regardless of regime -- the
+    n_regimes=1 special case, used as a baseline to isolate whether per-regime
+    differentiation is actually earning its complexity (see the shrinkage variant below,
+    which was added after `fit_regime_temperature` was found to make test-set calibration
+    WORSE on a small (~40 rows/regime) validation split -- see
+    docs/EXPERIMENT_PROTOCOL.md's Calibration section)."""
+    raw_temp = torch.zeros(1, requires_grad=True)
+    optimizer = torch.optim.LBFGS([raw_temp], lr=lr, max_iter=max_iter)
+    nll = torch.nn.CrossEntropyLoss()
+
+    def closure():
+        optimizer.zero_grad()
+        temp = torch.nn.functional.softplus(raw_temp) + 1e-3
+        loss = nll(logits / temp, labels)
+        loss.backward()
+        return loss
+
+    optimizer.step(closure)
+    with torch.no_grad():
+        return torch.nn.functional.softplus(raw_temp) + 1e-3
+
+
+def fit_regime_temperature_shrinkage(
+    logits: torch.Tensor, labels: torch.Tensor, regime_idx: torch.Tensor, n_regimes: int,
+    shrinkage_weight: float = 2.0, lr: float = 0.01, max_iter: int = 200,
+) -> torch.Tensor:
+    """Partial-pooling variant of `fit_regime_temperature`: per-regime temperatures are
+    fit jointly with a single global temperature and penalized (L2) for deviating from
+    it, i.e. shrunk toward the global value rather than left fully free. This directly
+    targets the diagnosed root cause of the naive per-regime fit's test-set calibration
+    regression: ~40 validation rows/regime is little enough data that 4 independent free
+    temperature parameters can fit validation-split noise that does not generalize.
+    `shrinkage_weight=0` recovers the naive independent-per-regime fit exactly;
+    `shrinkage_weight -> inf` recovers a single global temperature for all regimes.
+    `shrinkage_weight=2.0` is a fixed, disclosed default (not tuned against the test set
+    this function's output is later evaluated on -- that would be calibration leakage)."""
+    raw_temp = torch.zeros(n_regimes, requires_grad=True)
+    raw_global = torch.zeros(1, requires_grad=True)
+    optimizer = torch.optim.LBFGS([raw_temp, raw_global], lr=lr, max_iter=max_iter)
+    nll = torch.nn.CrossEntropyLoss()
+
+    def closure():
+        optimizer.zero_grad()
+        temp = torch.nn.functional.softplus(raw_temp) + 1e-3
+        global_temp = torch.nn.functional.softplus(raw_global) + 1e-3
+        temp_per_row = temp[regime_idx]
+        scaled = logits / temp_per_row.unsqueeze(1)
+        loss = nll(scaled, labels) + shrinkage_weight * torch.mean((temp - global_temp) ** 2)
+        loss.backward()
+        return loss
+
+    optimizer.step(closure)
+    with torch.no_grad():
+        return torch.nn.functional.softplus(raw_temp) + 1e-3
+
+
 def apply_regime_temperature(logits: torch.Tensor, regime_idx: torch.Tensor, temperature: torch.Tensor) -> torch.Tensor:
     temp_per_row = temperature[regime_idx]
     return torch.softmax(logits / temp_per_row.unsqueeze(1), dim=1)

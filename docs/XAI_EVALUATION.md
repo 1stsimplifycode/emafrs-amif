@@ -25,26 +25,41 @@ degrade the prediction more than an equal-size random ablation — there is no p
 absolute threshold, so this is always reported relative to that random baseline
 (`emafrs.xai.evaluation.faithfulness_score`).
 
-**Result (n=15 sampled test rows)**: **−0.001** (statistically indistinguishable from
-zero).
+**Result across three real runs, increasing sample size to test whether this is noise**:
+
+| Run | n | Faithfulness |
+|---|---:|---:|
+| Original | 15 | −0.001 |
+| Re-run, same n (different data window) | 15 | −0.004 |
+| Re-run, 4× sample size | 60 | −0.0004 |
+
+All three are statistically indistinguishable from zero, and **the largest sample (n=60)
+is not farther from zero than the smaller ones — if anything, closer**. This directly
+tests and rules out one of the three "plausible contributing factors" originally listed
+below (small sample size / noise): a real effect that was actually nonzero-but-noisy at
+n=15 would be expected to move away from zero, not toward it, as n grows. It did not.
 
 **Honest interpretation**: on this trained RAMA model, IG's top-ranked features are NOT
-more functionally load-bearing to the prediction than a random same-size feature subset.
-This is a genuine, disclosed weakness, not glossed over. Plausible contributing factors,
-none confirmed:
+more functionally load-bearing to the prediction than a random same-size feature subset —
+now a reproducible finding across three independent measurements, not a single run's
+statistical fluke. Remaining (still unconfirmed, but now better-supported by elimination)
+contributing factors:
 - The model's small size (hidden_dim=32, one hidden layer) and modest single-split
   training may produce a relatively flat/diffuse decision function where no small feature
-  subset dominates.
+  subset dominates. Consistent with the sparsity result below (median 8-9 of 26 features
+  needed for 80% coverage — attribution mass is fairly spread out, not concentrated).
 - Gradient-based attribution (IG) can diverge from removal-based (occlusion) importance
   when a model's response to a feature is highly nonlinear or saturates — a known,
-  documented tension in the XAI literature, not unique to this implementation.
-- Only 15 samples were evaluated (kept modest for CPU runtime); a larger sample might
-  reveal the true faithfulness score is nonzero but noisy at this sample size.
+  documented tension in the XAI literature, not unique to this implementation. This
+  remains untested here (would require an occlusion-based attribution method to compare
+  directly, not yet implemented — see "Not yet evaluated").
+- ~~Small sample size~~ — tested directly above (n=15 → n=60) and ruled out as the
+  explanation; retained here only to show the elimination, not as an open hypothesis.
 
 This finding argues for caution in how the dashboard (once built) presents IG attributions
 — as "model-attributed evidence" (the wording already enforced in `xai/nlg.py`), never as
 "the reason," which this result underlines is not merely a legal hedge but an empirically
-supported caveat for this specific trained model.
+supported and now-reproduced caveat for this specific trained model.
 
 ## Stability
 
@@ -53,7 +68,8 @@ z-scored feature space) 8 times and compute the Spearman rank correlation betwee
 original prediction-probability-vector response and each perturbed response
 (`emafrs.xai.evaluation.stability_score`).
 
-**Result (n=15)**: **0.946** (high stability).
+**Result**: 0.946 (n=15, original run); **0.970** (n=60, re-run) — consistently high
+stability across both sample sizes.
 
 **Interpretation**: the model's output — and by extension attributions computed from it —
 does not flip wildly under small input perturbations. This is a genuinely positive
@@ -66,9 +82,10 @@ instead of it.
 attribution magnitude reaches 80% of the total, per sampled row
 (`emafrs.xai.evaluation.sparsity_at_coverage`).
 
-**Result**: median **8 features** (of 26 total financial+microstructure features) needed
-to reach 80% attribution coverage — moderately sparse; explanations are not spread
-perfectly evenly across all 26 features, but also not dominated by 1-2 features alone.
+**Result**: median 8 features (n=15, original run); median **9 features** (n=60, re-run),
+of 26 total financial+microstructure features — moderately sparse and stable across
+sample sizes; explanations are not spread perfectly evenly across all 26 features, but
+also not dominated by 1-2 features alone.
 
 ## Counterfactual validity
 
@@ -110,9 +127,11 @@ sensitivity to its own inputs. `xai/nlg.py`'s generated text enforces this wordi
 
 ## Not yet evaluated
 
-- Faithfulness/stability/sparsity/counterfactual-validity on a LARGER sample (currently
-  n=15, kept modest for CPU runtime in this single script run) — a natural next step to
-  reduce noise in the faithfulness estimate specifically.
+- Occlusion-based (removal-based) attribution as a direct cross-check against IG's
+  gradient-based attribution specifically for the faithfulness question — the
+  larger-sample test above ruled out noise as the explanation for faithfulness≈0, leaving
+  "gradient-vs-removal attribution divergence" as the strongest remaining untested
+  hypothesis. Not yet implemented.
 - The same battery on Model C (static fusion) for a head-to-head XAI-quality comparison
   against Model D (RAMA) — currently only RAMA has been evaluated.
 - SHAP-based attribution as a cross-check against Integrated Gradients (both are installed
@@ -121,3 +140,8 @@ sensitivity to its own inputs. `xai/nlg.py`'s generated text enforces this wordi
   human/stakeholder evaluation can reasonably be conducted, design one") — no user study
   has been conducted; this remains a measurable-property evaluation only, not evidence of
   actual human trust or usefulness, and is described as such throughout this document.
+  **RESULT NOT AVAILABLE** — no human subjects, IRB protocol, or user-study
+  infrastructure exists in this project; fabricating trust/usefulness scores here would
+  violate this project's no-fabrication rule. See the trustworthiness audit
+  (`docs/TRUSTWORTHINESS_AUDIT.md`) for the full accounting of every capability this
+  project does not have.

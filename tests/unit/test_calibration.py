@@ -6,7 +6,9 @@ from emafrs.models.calibration import (
     brier_score,
     evaluate_regime_calibration,
     expected_calibration_error,
+    fit_global_temperature,
     fit_regime_temperature,
+    fit_regime_temperature_shrinkage,
 )
 
 
@@ -66,6 +68,66 @@ def test_fit_regime_temperature_reduces_overconfidence():
     # scaling down an already-good-direction but overconfident distribution should not
     # make calibration worse
     assert ece_scaled <= ece_unscaled + 0.05
+
+
+def test_fit_global_temperature_reduces_overconfidence():
+    """Same overconfident-logits construction as the per-regime test, but the single
+    global temperature (no regime split at all) -- added as a baseline to isolate whether
+    per-regime freedom is actually earning its complexity, per the real diagnostic finding
+    in docs/EXPERIMENT_PROTOCOL.md's Calibration section."""
+    torch.manual_seed(0)
+    n = 200
+    true_labels = torch.randint(0, 3, (n,))
+    logits = torch.nn.functional.one_hot(true_labels, 3).float() * 8.0
+    logits += torch.randn(n, 3) * 0.5
+
+    temp = fit_global_temperature(logits, true_labels, max_iter=50)
+    assert temp.shape == (1,)
+    assert (temp > 0).all()
+
+    proba_scaled = torch.softmax(logits / temp, dim=1).numpy()
+    proba_unscaled = torch.softmax(logits, dim=1).numpy()
+    ece_scaled = expected_calibration_error(proba_scaled, true_labels.numpy())
+    ece_unscaled = expected_calibration_error(proba_unscaled, true_labels.numpy())
+    assert ece_scaled <= ece_unscaled + 0.05
+
+
+def test_fit_regime_temperature_shrinkage_collapses_to_global_at_high_weight():
+    """With a very large shrinkage_weight, the L2-toward-global penalty dominates the NLL
+    term, so per-regime temperatures should collapse to nearly one shared value
+    regardless of the data -- a direct mathematical property of the penalty, verified
+    empirically here rather than merely assumed."""
+    torch.manual_seed(1)
+    n = 300
+    n_regimes = 3
+    true_labels = torch.randint(0, 3, (n,))
+    regime_idx = torch.randint(0, n_regimes, (n,))
+    logits = torch.randn(n, 3) * 2.0
+
+    temp_shrunk = fit_regime_temperature_shrinkage(
+        logits, true_labels, regime_idx, n_regimes=n_regimes, shrinkage_weight=1000.0, max_iter=50
+    )
+    assert temp_shrunk.shape == (n_regimes,)
+    assert (temp_shrunk > 0).all()
+    assert temp_shrunk.std().item() < 0.01
+
+
+def test_fit_regime_temperature_shrinkage_zero_weight_matches_free_fit():
+    """shrinkage_weight=0 should recover (approximately) the same result as the
+    unregularized per-regime fit, since the penalty term vanishes entirely."""
+    torch.manual_seed(2)
+    n = 200
+    n_regimes = 2
+    true_labels = torch.randint(0, 3, (n,))
+    logits = torch.nn.functional.one_hot(true_labels, 3).float() * 8.0
+    logits += torch.randn(n, 3) * 0.5
+    regime_idx = torch.randint(0, n_regimes, (n,))
+
+    temp_free = fit_regime_temperature(logits, true_labels, regime_idx, n_regimes=n_regimes, max_iter=50)
+    temp_shrunk_zero = fit_regime_temperature_shrinkage(
+        logits, true_labels, regime_idx, n_regimes=n_regimes, shrinkage_weight=0.0, max_iter=50
+    )
+    assert torch.allclose(temp_free, temp_shrunk_zero, atol=0.05)
 
 
 def test_evaluate_regime_calibration_report_structure():

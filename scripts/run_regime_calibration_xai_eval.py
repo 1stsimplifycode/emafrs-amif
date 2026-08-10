@@ -19,7 +19,9 @@ from emafrs.models.calibration import (
     brier_score,
     evaluate_regime_calibration,
     expected_calibration_error,
+    fit_global_temperature,
     fit_regime_temperature,
+    fit_regime_temperature_shrinkage,
 )
 from emafrs.models.dataset import build_daily_dataset
 from emafrs.models.train import train_fusion_model
@@ -83,18 +85,55 @@ def main():
 
     with torch.no_grad():
         val_logits, _ = model(X_val, regime_val)
-    temperature = fit_regime_temperature(val_logits, y_val_idx, regime_val_argmax, n_regimes=len(bundle.regime_columns))
-
+    n_regimes = len(bundle.regime_columns)
     regime_test_argmax_t = regime_test.argmax(dim=1)
-    proba_calibrated = apply_regime_temperature(logits, regime_test_argmax_t, temperature).detach().numpy()
-
     brier_before = brier_score(proba, y_test_idx)
-    brier_after = brier_score(proba_calibrated, y_test_idx)
     ece_before = expected_calibration_error(proba, y_test_idx)
+
+    # Naive per-regime temperature (the ORIGINAL implementation) -- documented in
+    # docs/EXPERIMENT_PROTOCOL.md as making test-set calibration WORSE, hypothesized
+    # cause: 4 fully independent temperatures fit on ~40 val rows/regime overfit
+    # validation-split noise. Two corrections are compared against it below on the SAME
+    # real test set: a single global temperature (no per-regime freedom at all), and a
+    # shrinkage/partial-pooling fit (per-regime temperatures regularized toward a jointly
+    # fit global temperature).
+    temp_naive = fit_regime_temperature(val_logits, y_val_idx, regime_val_argmax, n_regimes=n_regimes)
+    temp_global_scalar = fit_global_temperature(val_logits, y_val_idx)
+    temp_global = temp_global_scalar.expand(n_regimes)
+    temp_shrink = fit_regime_temperature_shrinkage(val_logits, y_val_idx, regime_val_argmax, n_regimes=n_regimes, shrinkage_weight=2.0)
+
+    calibration_variants = {
+        "naive_per_regime": temp_naive,
+        "global_only": temp_global,
+        "shrinkage_per_regime (weight=2.0)": temp_shrink,
+    }
+
+    print(f"  Before calibration: Brier={brier_before:.4f} ECE={ece_before:.4f}")
+    calib_lines = ["\n## Calibration\n\n", f"Before calibration: Brier={brier_before:.4f}, ECE={ece_before:.4f}.\n\n",
+                   "| Variant | Brier | ECE | Fitted temperature(s) |\n|---|---:|---:|---|\n"]
+    best_variant, best_ece = None, ece_before
+    for name, temp in calibration_variants.items():
+        proba_calibrated = apply_regime_temperature(logits, regime_test_argmax_t, temp).detach().numpy()
+        brier_after = brier_score(proba_calibrated, y_test_idx)
+        ece_after = expected_calibration_error(proba_calibrated, y_test_idx)
+        temp_str = ", ".join(f"{t:.3f}" for t in temp.tolist())
+        print(f"  [{name}] Brier={brier_after:.4f} ECE={ece_after:.4f} temp(s)=[{temp_str}]")
+        calib_lines.append(f"| {name} | {brier_after:.4f} | {ece_after:.4f} | [{temp_str}] |\n")
+        if ece_after < best_ece:
+            best_variant, best_ece = name, ece_after
+
+    print(f"  Best-on-test variant by ECE: {best_variant or 'NONE -- no calibration variant beat uncalibrated'} "
+          f"(uncalibrated ECE={ece_before:.4f})")
+    calib_lines.append(f"\nBest-on-test variant by ECE: **{best_variant or 'NONE -- no calibration variant improved on uncalibrated'}** "
+                        f"(uncalibrated ECE={ece_before:.4f}).\n")
+
+    # Use the naive per-regime temperature downstream (regime-wise report, doc numbers)
+    # for continuity with the previously-published per-regime breakdown; the honest
+    # cross-variant comparison above is the actual correction-and-re-evaluation result.
+    temperature = temp_naive
+    proba_calibrated = apply_regime_temperature(logits, regime_test_argmax_t, temperature).detach().numpy()
+    brier_after = brier_score(proba_calibrated, y_test_idx)
     ece_after = expected_calibration_error(proba_calibrated, y_test_idx)
-    print(f"  Brier before={brier_before:.4f} after={brier_after:.4f}")
-    print(f"  ECE before={ece_before:.4f} after={ece_after:.4f}")
-    print(f"  Fitted temperature by regime: {dict(zip(range(1, len(temperature)+1), temperature.tolist()))}")
 
     report = evaluate_regime_calibration(
         proba_calibrated, y_test_idx, (regime_test_argmax_t + 1).numpy(), temperature.numpy()
@@ -102,7 +141,7 @@ def main():
 
     # ---- XAI evaluation ----
     print("\n=== XAI evaluation (sampled test rows) ===")
-    n_sample = min(30, len(bundle.test_idx))
+    n_sample = min(60, len(bundle.test_idx))
     sample_idx = np.random.default_rng(0).choice(len(bundle.test_idx), size=n_sample, replace=False)
 
     def predict_proba_flat(x_flat: np.ndarray) -> np.ndarray:
@@ -120,7 +159,9 @@ def main():
     all_feature_names = list(bundle.financial_columns) + (list(bundle.microstructure_columns) if "microstructure" in modality_cols else [])
 
     faithfulness_scores, stability_scores, sparsities = [], [], []
-    for i in sample_idx[:15]:  # keep this loop-heavy part modest for runtime
+    for i in sample_idx[:60]:  # bumped from 15 -> 60 to test whether the faithfulness ~0
+        # finding was a real effect or noise from a small evaluation sample (a plausible
+        # contributing factor flagged, but not tested, in docs/XAI_EVALUATION.md)
         date = bundle.test_idx[i]
         row = bundle.features.loc[date, all_feature_names].to_numpy(dtype=np.float32)
         target_class = int(pred_idx[i])
@@ -161,8 +202,9 @@ def main():
     lines.append(f"Ticker: {TICKER}, single split, RAMA model (financial+microstructure), test accuracy={result.accuracy:.3f}, macro F1={result.macro_f1:.3f}.\n\n")
     lines.append("## Regime-wise performance\n\n")
     lines += regime_lines
-    lines.append(f"\n## Calibration\n\nBrier before={brier_before:.4f}, after={brier_after:.4f}. ECE before={ece_before:.4f}, after={ece_after:.4f}.\n")
-    lines.append(f"Fitted temperature by regime: {report.temperature_by_regime}\n")
+    lines += calib_lines
+    lines.append(f"\nNaive-per-regime detail -- Brier after={brier_after:.4f}, ECE after={ece_after:.4f}, "
+                  f"fitted temperature by regime: {report.temperature_by_regime}\n")
     lines.append(f"Per-regime Brier: {report.per_regime_brier}\nPer-regime ECE: {report.per_regime_ece}\n")
     lines.append("\n## XAI evaluation\n\n")
     lines.append(f"- Faithfulness (top-5 vs random-5 removal degradation, n={len(faithfulness_scores)}): {np.mean(faithfulness_scores):.4f}\n")
