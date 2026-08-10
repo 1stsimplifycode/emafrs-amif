@@ -1,0 +1,47 @@
+# Secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data & model artifacts (large / regenerable — not committed)
+data/cache/
+data/raw/
+data/processed/
+models/checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+mlruns/
+wandb/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+# Logs
+*.log
+logs/
+
+# Editor
+.vscode/
+.idea/
