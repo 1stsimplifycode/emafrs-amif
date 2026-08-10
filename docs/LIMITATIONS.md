@@ -51,6 +51,22 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   audio/video affect features (pitch, prosody, facial expression) would require downloading
   and processing actual media files, which is out of scope for the live/production pipeline
   and, if attempted at all, would only cover a small hand-picked case-study set.
+- **YouTube transcript fetching is IP-blocked by an undocumented anti-bot heuristic** in
+  `youtube-transcript-api`'s underlying (unofficial) endpoint. A real pilot run
+  (`docs/TEXT_MODALITY_PILOT.md`) saw 23 of 35 transcript requests blocked with "YouTube
+  is blocking requests from your IP," and a much smaller follow-up (a single video)
+  triggered the same block shortly after -- this appears to be a sustained IP-level
+  restriction on this development environment's network, not simply a per-burst rate
+  limit. A courtesy delay between requests (`transcript_request_delay_seconds`) was added
+  but does not eliminate it. Practical consequence: real text-modality datasets built from
+  this environment will have a much lower video yield than videos found, and this must be
+  accounted for (via the `text_available` mask, already handled) rather than assumed away.
+- **Text modality is now technically wired end-to-end but data-starved.** As of the pilot
+  run, only 2 of ~160 test-set rows carried real text signal (see
+  `docs/TEXT_MODALITY_PILOT.md` for the full breakdown: IP-blocking plus rolling z-score
+  warm-up consuming most of the remaining sparse signal). The 3-modality training result
+  is explicitly reported as underpowered/inconclusive, not as evidence the text modality
+  doesn't help.
 
 ## Data sources
 
@@ -58,6 +74,13 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   YouTube — World Bank, IMF, GDELT, and Stooq are not integrated. Per build brief Section
   12 ("data quality > API quantity"), breadth was intentionally not prioritized over
   provenance-tracked reliability of the sources that are integrated.
+- **The NewsAPI key provided for this project does not work.** Verified directly (a raw
+  HTTP request to newsapi.org bypassing all project code) that the key is rejected with
+  `401 apiKeyInvalid`. This is an account/key issue, not a defect in
+  `emafrs/data/newsapi_client.py` -- `NEWS_API_KEY` is present in `.env` and
+  `CONFIG.is_configured("newsapi")` correctly reports `True`, but live calls will fail
+  until a valid key is supplied. News-derived text (as opposed to YouTube-derived text)
+  remains unavailable until this is resolved.
 - SEC EDGAR enforces strict per-IP rate limiting / bot-defense on this environment; a live
   403 was observed during development (see `docs/DATA_SOURCES_AND_APIS.md`). The DAL
   surfaces this as `ProviderUnavailableError` rather than masking it, but it means SEC EDGAR

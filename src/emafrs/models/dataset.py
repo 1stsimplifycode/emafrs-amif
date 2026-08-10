@@ -17,11 +17,15 @@ Design decisions (each disclosed rather than silently made):
    imputed/faked. This is a genuine, disclosed coverage limitation, not a bug -- it will
    improve automatically as more live-pipeline history accumulates over time.
 
-4. Text (ASEM) modality is NOT included in this dataset by default: as of this phase no
-   NewsAPI/YouTube key is configured, so its availability mask would be 0 for every row,
-   which is not a meaningful modality to train or ablate on yet. `include_text=True`
-   requires the caller to supply pre-computed affective features (see `text_features`
-   param) once real data exists -- this function never fabricates them.
+4. Text (ASEM) modality: real YouTube-derived daily affective features can now be joined
+   in via `text_daily` (a DataFrame from
+   `emafrs.nlp.text_dataset.aggregate_daily_text_features`, itself built from REAL
+   transcripts of REAL searched videos -- see that module). This function does not fetch
+   YouTube data itself (search + ASEM processing is comparatively expensive and quota-
+   limited, so it is deliberately a caller-supplied, pre-computed input, computed once and
+   reused across folds/experiments rather than re-fetched every call). Dates without any
+   video get `text_available=0` and zero-filled feature columns -- the identical masking
+   pattern already used for microstructure, never fabricated.
 """
 from __future__ import annotations
 
@@ -46,6 +50,7 @@ class DatasetBundle:
     financial_columns: list[str]
     regime_columns: list[str]       # regime posterior probability columns
     microstructure_columns: list[str]
+    text_columns: list[str]
     train_idx: pd.DatetimeIndex
     val_idx: pd.DatetimeIndex
     test_idx: pd.DatetimeIndex
@@ -72,11 +77,15 @@ def build_daily_dataset(
     val_frac: float = 0.15,
     zscore_window: int = 126,
     include_microstructure: bool = True,
+    text_daily: pd.DataFrame | None = None,
 ) -> DatasetBundle:
     """Fetches OHLCV (+ intraday, if requested) fresh and builds a dataset. For walk-
     forward validation across many folds of the SAME ticker, prefer
     `build_daily_dataset_from_ohlcv` directly with a pre-fetched (and, per fold, date-
-    truncated) DataFrame to avoid re-fetching from yfinance on every fold."""
+    truncated) DataFrame to avoid re-fetching from yfinance on every fold.
+
+    `text_daily`: optional pre-computed real text-modality DataFrame (see
+    emafrs.nlp.text_dataset) -- this function never fetches YouTube data itself."""
     df, _ = YFinanceClient().get_ohlcv(ticker, period=period, interval="1d")
     intraday_df = None
     if include_microstructure:
@@ -88,6 +97,7 @@ def build_daily_dataset(
         df, ticker, horizon=horizon, deadzone=deadzone, n_regime_states=n_regime_states,
         train_frac=train_frac, val_frac=val_frac, zscore_window=zscore_window,
         include_microstructure=include_microstructure, intraday_df=intraday_df,
+        text_daily=text_daily,
     )
 
 
@@ -103,6 +113,7 @@ def build_daily_dataset_from_ohlcv(
     include_microstructure: bool = True,
     intraday_df: pd.DataFrame | None = None,
     explicit_split: tuple[pd.DatetimeIndex, pd.DatetimeIndex, pd.DatetimeIndex] | None = None,
+    text_daily: pd.DataFrame | None = None,
 ) -> DatasetBundle:
     """Same construction as build_daily_dataset, but takes an already-fetched daily OHLCV
     DataFrame (and optionally a pre-fetched intraday DataFrame) directly -- lets
@@ -171,6 +182,31 @@ def build_daily_dataset_from_ohlcv(
             combined["microstructure_available"] = 0.0
             microstructure_columns = ["microstructure_available"]
 
+    text_columns: list[str] = []
+    if text_daily is not None and not text_daily.empty:
+        from emafrs.nlp.text_dataset import TEXT_FEATURE_COLUMNS
+
+        # Video coverage is far sparser than daily financial/microstructure data (a handful
+        # of videos over months, not one row per trading day), so the z-score window is
+        # capped much smaller than zscore_window's 126-day default -- reusing that default
+        # here would NaN-out nearly every row waiting for a 126-observation warm-up that
+        # may never accumulate at this sparsity.
+        text_zscore_window = min(21, max(3, len(text_daily) - 1))
+        text_daily_z = rolling_zscore_frame(
+            text_daily, window=text_zscore_window,
+            columns=[*TEXT_FEATURE_COLUMNS, "text_n_videos"],
+        )
+        text_columns = list(text_daily_z.columns) + ["text_available"]
+
+        combined = combined.join(text_daily_z, how="left")
+        combined["text_available"] = combined[text_daily_z.columns].notna().any(axis=1).astype(float)
+        combined[text_daily_z.columns] = combined[text_daily_z.columns].fillna(0.0)
+    elif text_daily is not None:
+        # caller explicitly asked for text but the real search/ASEM run found nothing --
+        # still expose the availability mask (always 0) rather than silently omitting it.
+        combined["text_available"] = 0.0
+        text_columns = ["text_available"]
+
     labels = build_ternary_labels(df["close"], horizon=horizon, deadzone=deadzone)
     features_final, y = drop_undefined_labels(combined, labels)
 
@@ -187,6 +223,7 @@ def build_daily_dataset_from_ohlcv(
         financial_columns=financial_columns,
         regime_columns=regime_columns,
         microstructure_columns=microstructure_columns,
+        text_columns=text_columns,
         train_idx=train_idx,
         val_idx=val_idx,
         test_idx=test_idx,

@@ -15,12 +15,34 @@ and the Resilience section below for what "correctly" means here).
 | Provider | Purpose | Auth | Endpoint(s) used | Key fields | Free-tier limits | License / usage notes | Fallback |
 |---|---|---|---|---|---|---|---|
 | **yfinance** | Primary OHLCV, returns, technicals | None | Yahoo Finance chart API (via `yfinance` package) | date, OHLC, adj close, volume | No formal SLA/limit; unofficial scrape of Yahoo endpoints | Free for research/personal use; no redistribution guarantee | Alpha Vantage |
-| **Alpha Vantage** | Validation/fallback OHLCV, technical indicators, intraday bars | API key | `TIME_SERIES_DAILY_ADJUSTED`, `TIME_SERIES_INTRADAY`, indicator functions (`RSI`,`MACD`,`SMA`,`EMA`,`BBANDS`) | OHLCV, indicator series | 25 requests/day, 5/minute (published tier as of writing — verify current limits) | Redistribution restrictions per alphavantage.co/terms_of_service | yfinance |
+| **Alpha Vantage** | Validation/fallback OHLCV, technical indicators, intraday bars | API key | `TIME_SERIES_DAILY` (not `_ADJUSTED` — see note below), `TIME_SERIES_INTRADAY`, indicator functions (`RSI`,`MACD`,`SMA`,`EMA`,`BBANDS`) | OHLCV (not dividend-adjusted), indicator series | 25 requests/day, 5/minute (published tier as of writing — verify current limits) | Redistribution restrictions per alphavantage.co/terms_of_service | yfinance |
 | **Finnhub** | Real-time quote snapshot, company news | API key | `/quote`, `/company-news` | last price, timestamp; headline/summary/source/url/datetime | 60 calls/minute | finnhub.io/terms-of-service | NewsAPI (for news) |
 | **NewsAPI.org** | General market/company news | API key | `/v2/everything` | title, description, source, publishedAt, url | 100 requests/day, Developer tier, ~1 month lookback, non-commercial, attribution required | newsapi.org/terms | Finnhub company-news |
 | **YouTube Data API v3** | Financial-communication video discovery + transcript text | API key | `search.list`, transcript via `youtube-transcript-api` | title, channel, publishedAt, description, transcript text | 10,000 quota units/day; `search.list`=100 units, `videos.list`=1 unit | YouTube ToS; transcripts are auto/creator captions, not verified | none (unique modality) |
 | **FRED** | Macroeconomic context series | API key | `/fred/series/observations` | date, value | ~120 req/min (generous) | Public domain (U.S. government work) | World Bank/IMF (not yet implemented) |
 | **SEC EDGAR** | Company filings, full-text search, CIK lookup | None (custom User-Agent required) | `company_tickers.json`, `submissions/CIK*.json`, `efts.sec.gov/LATEST/search-index` | filing form, filed date, accession no., filer names | <=10 req/sec; strict bot-defense on generic headers/User-Agents | Public domain (U.S. government work) | none |
+
+## Verified with real keys (update)
+
+Alpha Vantage and YouTube keys were added to `.env` and exercised for real; NewsAPI's
+key was also added but does not work (see below). Findings, each also cross-referenced
+in `docs/LIMITATIONS.md`:
+
+- **Alpha Vantage**: `TIME_SERIES_DAILY_ADJUSTED` now returns `"This is a premium
+  endpoint"` on the free tier — a provider policy change since this client was first
+  written. Fixed by switching to the still-free `TIME_SERIES_DAILY` (no dividend-adjusted
+  close column). Verified with a real live call against `AAPL`.
+- **YouTube Data API v3**: works correctly for both `search.list` (found real, current
+  videos, e.g. an actual "FOMC Press Conference, July 29, 2026") and transcript
+  retrieval — but `youtube-transcript-api`'s underlying (unofficial) transcript endpoint
+  IP-blocks a large fraction of requests from this development environment (23 of 35 in
+  one real run — see `docs/TEXT_MODALITY_PILOT.md`). This is a provider-side anti-bot
+  heuristic, not a defect in this project's code, and is not fully mitigated by the
+  courtesy delay this project added between requests.
+- **NewsAPI.org**: the specific key provided for this project is rejected directly by
+  newsapi.org (`401 apiKeyInvalid`), verified with a raw HTTP request bypassing all
+  project code. `CONFIG.is_configured("newsapi")` correctly reports the key as *present*
+  (it is syntactically a key), but live calls fail until a valid key is supplied.
 
 ## Resilience behavior (`src/emafrs/data/base.py`, `cache.py`)
 
