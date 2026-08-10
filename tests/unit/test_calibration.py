@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 
 from emafrs.models.calibration import (
@@ -9,6 +10,7 @@ from emafrs.models.calibration import (
     fit_global_temperature,
     fit_regime_temperature,
     fit_regime_temperature_shrinkage,
+    negative_log_likelihood,
 )
 
 
@@ -68,6 +70,25 @@ def test_fit_regime_temperature_reduces_overconfidence():
     # scaling down an already-good-direction but overconfident distribution should not
     # make calibration worse
     assert ece_scaled <= ece_unscaled + 0.05
+
+
+def test_nll_zero_for_perfect_confident_correct_predictions():
+    proba = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    y_true = np.array([0, 1])
+    assert negative_log_likelihood(proba, y_true) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_nll_high_for_confident_wrong_predictions():
+    proba = np.array([[0.0, 0.0, 1.0]])
+    y_true = np.array([0])
+    assert negative_log_likelihood(proba, y_true) > 20  # -log(eps) is large
+
+
+def test_nll_higher_for_less_confident_correct_predictions():
+    confident = np.array([[0.9, 0.05, 0.05]])
+    unsure = np.array([[0.4, 0.3, 0.3]])
+    y_true = np.array([0])
+    assert negative_log_likelihood(unsure, y_true) > negative_log_likelihood(confident, y_true)
 
 
 def test_fit_global_temperature_reduces_overconfidence():

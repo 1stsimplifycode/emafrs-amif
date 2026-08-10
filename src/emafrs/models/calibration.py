@@ -114,6 +114,16 @@ def brier_score(proba: np.ndarray, y_true_idx: np.ndarray, n_classes: int = 3) -
     return float(np.mean(np.sum((proba - one_hot) ** 2, axis=1)))
 
 
+def negative_log_likelihood(proba: np.ndarray, y_true_idx: np.ndarray, eps: float = 1e-12) -> float:
+    """Mean negative log-likelihood (cross-entropy) of the true class under the predicted
+    distribution -- unlike Brier/ECE, this is unbounded above and penalizes confident wrong
+    predictions much more heavily, making it a useful complementary calibration metric
+    (added during the trustworthiness-audit remediation pass alongside ECE/Brier, per the
+    standard {ECE, Brier, NLL} calibration-reporting triple)."""
+    true_class_proba = proba[np.arange(len(y_true_idx)), y_true_idx]
+    return float(-np.mean(np.log(np.clip(true_class_proba, eps, 1.0))))
+
+
 def expected_calibration_error(proba: np.ndarray, y_true_idx: np.ndarray, n_bins: int = 10) -> float:
     """ECE over the model's top-predicted-class confidence: bins predictions by confidence,
     compares mean confidence to empirical accuracy within each bin, weighted by bin size."""

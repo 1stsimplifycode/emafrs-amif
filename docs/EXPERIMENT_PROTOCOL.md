@@ -252,32 +252,36 @@ pathway. After fixing that (switching to `RegimeModel.predict_proba_causal`, a f
 filter), the calibration comparison was re-run on the corrected regime assignments — and
 the picture changed meaningfully:
 
-| Variant | Brier | ECE | Fitted temperature(s) |
-|---|---:|---:|---|
-| Uncalibrated | 0.660 | 0.031 | n/a |
-| Naive per-regime | 0.754 | **0.123** | [**0.018**, 1.024, 0.506, 0.361] |
-| Global-only (1 free parameter) | 0.666 | **0.027** | [0.694 ×4] |
-| Shrinkage per-regime (weight=2.0) | 0.667 | 0.032 | [0.667, 0.685, 0.667, 0.661] |
+| Variant | Brier | ECE | NLL | Fitted temperature(s) |
+|---|---:|---:|---:|---|
+| Uncalibrated | 0.660 | 0.031 | **1.091** | n/a |
+| Naive per-regime | 0.754 | **0.123** | 2.384 | [**0.018**, 1.024, 0.506, 0.361] |
+| Global-only (1 free parameter) | 0.666 | **0.027** | 1.106 | [0.694 ×4] |
+| Shrinkage per-regime (weight=2.0) | 0.667 | 0.032 | 1.108 | [0.667, 0.685, 0.667, 0.661] |
 
-Now **global-only genuinely beats uncalibrated** (0.027 < 0.031 ECE) for the first time
-across every run of this evaluation, while naive per-regime became dramatically *worse*
-than before (ECE 0.123, driven by a degenerate near-zero temperature of 0.018 fit for the
-smallest regime group, n=27) — this is consistent with the ORIGINAL small-sample
-overfitting hypothesis, not the non-stationarity one. **Honest caveat on attribution**: this
-re-run also used a data window one day later than the previous one (regime group sizes
-shifted: 27/71/45/17 vs. the earlier 32/70/46/12), so the change cannot be attributed to
-the regime-probability fix alone with full confidence — both a real methodological
-correction and ordinary date-window drift changed between these two runs, and they were
-not isolated from each other. What IS a clean, controlled finding (not confounded by date
+**Multi-metric picture, reported in full rather than cherry-picking the metric that looks
+best (added when NLL was included alongside Brier/ECE during remediation)**: global-only
+improves ECE (0.027 < 0.031) but is actually slightly WORSE than doing nothing on BOTH
+Brier (0.666 vs. 0.660) and NLL (1.106 vs. 1.091). Naive per-regime became dramatically
+worse on every metric (ECE 0.123, NLL 2.384, driven by a degenerate near-zero temperature
+of 0.018 fit for the smallest regime group, n=27) — consistent with the ORIGINAL
+small-sample overfitting hypothesis, not the non-stationarity one. **Honest caveat on
+attribution**: this comparison also used a data window one day later than the previous
+run (regime group sizes shifted: 27/71/45/17 vs. the earlier 32/70/46/12), so the change
+from the first calibration analysis cannot be attributed to the regime-probability fix
+alone with full confidence. What IS a clean, controlled finding (not confounded by date
 drift) is documented under "Regime-probability leakage" below.
 
-**Current best-supported conclusion**: a single global temperature is the most reliable
-calibrator observed across all runs to date; per-regime temperature freedom is harmful at
-this sample size (~15-70 rows per regime) regardless of exact regime assignment quality.
-Shrinkage at weight=2.0 sits between global and naive but has not, in any run, been the
-best-performing variant — a much heavier shrinkage weight (closer to fully global) is the
-better-supported choice going forward, not yet adopted as the default (kept as a disclosed
-open parameter rather than tuned against the test set that would evaluate it).
+**Current best-supported conclusion, precise rather than a single verdict**: no
+calibration variant tested is unambiguously better than doing nothing — uncalibrated wins
+on Brier and NLL, global-only wins on ECE, and naive/shrinkage per-regime lose on every
+metric. Different calibration metrics can legitimately disagree (ECE only looks at binned
+top-class confidence vs. accuracy; Brier and NLL score the full predicted distribution),
+and reporting only ECE would have overstated the case for global-only calibration. Per-regime
+temperature freedom is harmful at this sample size (~15-70 rows per regime) on every
+metric, regardless of exact regime assignment quality — that part of the conclusion is
+robust. Whether ANY post-hoc temperature scaling is worth adopting for this model is,
+honestly, not yet resolved by the evidence gathered; it is not adopted as a default.
 
 ### Regime-probability leakage (found during this audit, root-caused, fixed, re-verified)
 

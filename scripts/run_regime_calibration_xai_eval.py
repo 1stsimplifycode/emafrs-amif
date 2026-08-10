@@ -22,6 +22,7 @@ from emafrs.models.calibration import (
     fit_global_temperature,
     fit_regime_temperature,
     fit_regime_temperature_shrinkage,
+    negative_log_likelihood,
 )
 from emafrs.models.dataset import build_daily_dataset
 from emafrs.models.train import train_fusion_model
@@ -89,6 +90,7 @@ def main():
     regime_test_argmax_t = regime_test.argmax(dim=1)
     brier_before = brier_score(proba, y_test_idx)
     ece_before = expected_calibration_error(proba, y_test_idx)
+    nll_before = negative_log_likelihood(proba, y_test_idx)
 
     # Naive per-regime temperature (the ORIGINAL implementation) -- documented in
     # docs/EXPERIMENT_PROTOCOL.md as making test-set calibration WORSE, hypothesized
@@ -108,17 +110,19 @@ def main():
         "shrinkage_per_regime (weight=2.0)": temp_shrink,
     }
 
-    print(f"  Before calibration: Brier={brier_before:.4f} ECE={ece_before:.4f}")
-    calib_lines = ["\n## Calibration\n\n", f"Before calibration: Brier={brier_before:.4f}, ECE={ece_before:.4f}.\n\n",
-                   "| Variant | Brier | ECE | Fitted temperature(s) |\n|---|---:|---:|---|\n"]
+    print(f"  Before calibration: Brier={brier_before:.4f} ECE={ece_before:.4f} NLL={nll_before:.4f}")
+    calib_lines = ["\n## Calibration\n\n",
+                   f"Before calibration: Brier={brier_before:.4f}, ECE={ece_before:.4f}, NLL={nll_before:.4f}.\n\n",
+                   "| Variant | Brier | ECE | NLL | Fitted temperature(s) |\n|---|---:|---:|---:|---|\n"]
     best_variant, best_ece = None, ece_before
     for name, temp in calibration_variants.items():
         proba_calibrated = apply_regime_temperature(logits, regime_test_argmax_t, temp).detach().numpy()
         brier_after = brier_score(proba_calibrated, y_test_idx)
         ece_after = expected_calibration_error(proba_calibrated, y_test_idx)
+        nll_after = negative_log_likelihood(proba_calibrated, y_test_idx)
         temp_str = ", ".join(f"{t:.3f}" for t in temp.tolist())
-        print(f"  [{name}] Brier={brier_after:.4f} ECE={ece_after:.4f} temp(s)=[{temp_str}]")
-        calib_lines.append(f"| {name} | {brier_after:.4f} | {ece_after:.4f} | [{temp_str}] |\n")
+        print(f"  [{name}] Brier={brier_after:.4f} ECE={ece_after:.4f} NLL={nll_after:.4f} temp(s)=[{temp_str}]")
+        calib_lines.append(f"| {name} | {brier_after:.4f} | {ece_after:.4f} | {nll_after:.4f} | [{temp_str}] |\n")
         if ece_after < best_ece:
             best_variant, best_ece = name, ece_after
 
