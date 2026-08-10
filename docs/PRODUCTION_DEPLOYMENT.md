@@ -1,5 +1,34 @@
 # Production Deployment
 
+## Dashboard frontend
+
+`frontend/` — React 19 + TypeScript + Vite. Real components (`src/components/`) calling
+the real backend through a typed client (`src/api.ts`): prediction card (direction,
+confidence, regime, modality-contribution bars, top Integrated Gradients attributions,
+counterfactual, explanation text), prediction history table, data-source health panel.
+No mocked/placeholder data anywhere in the app code — every value rendered comes from a
+real API response.
+
+**Verified**: `npm run build` (TypeScript compiles, Vite bundles cleanly) and `npm test`
+(16 Vitest/React Testing Library tests, including `PredictionCard.test.tsx`'s fixture,
+which is not invented but a literal copy of a real response captured from
+`POST /api/v1/predictions/MSFT/refresh` during manual verification against the live
+backend). The dev server was started (`npm run dev`) alongside the FastAPI backend
+(`uvicorn emafrs.api.app:app`) and every module (`App.tsx` and all components) was
+confirmed to transform/serve without error, and the exact HTTP calls the dashboard makes
+(`GET /health`, `GET /api/v1/data-sources/health`, `POST .../refresh`,
+`GET .../latest`, `GET .../history`) were exercised directly via curl with the frontend's
+`Origin` header, confirming CORS is correctly configured and the full pipeline produces
+real persisted predictions reachable from the browser's fetch calls.
+
+**Not verified**: an actual rendered-pixels visual check in a real browser window — the
+Chrome DevTools browser-automation tool was unavailable in this environment (extension not
+connected). The functional verification above (build succeeds, module graph loads without
+error, live API calls succeed with correct CORS/data shape, component tests pass against a
+real captured API response) is a strong but not identical substitute for an actual
+click-through visual check, and this gap is stated explicitly rather than silently assumed
+equivalent.
+
 ## What exists today
 
 - **FastAPI backend** (`src/emafrs/api/app.py`): `/health`,
@@ -45,9 +74,24 @@ uvicorn emafrs.api.app:app --reload
 
 ## Docker
 
-**Not yet built as of this document.** Tracked under task "Dashboard frontend + Docker +
-tests." When it lands, this section will describe the actual `Dockerfile`/
-`docker-compose.yml`, not a speculative one written in advance.
+- `Dockerfile` (repo root): backend image, `python:3.12-slim`, CPU-only torch install,
+  editable install of `emafrs`, non-root user, healthcheck against `/health`.
+- `frontend/Dockerfile`: multi-stage — `node:22-slim` build, served by `nginx:1.27-alpine`
+  with `frontend/nginx.conf` (SPA fallback routing, cache headers, the same security
+  headers the API sets).
+- `docker-compose.yml`: wires both together, backend on `:8000`, frontend on `:8080`,
+  named volumes for `data/` (SQLite + cache) and `models/checkpoints/`, API keys passed
+  through from the host environment (never baked into the image).
+
+**Disclosed limitation**: the Docker Desktop daemon was not running in this development
+environment (`docker ps` failed to connect), so these Dockerfiles/compose file have **not
+been verified with an actual `docker build`/`docker compose up` run**. They were written
+carefully and reviewed against the same dependency list and startup command already
+verified to work directly (`uvicorn emafrs.api.app:app`, `npm run build`), but "written
+carefully" is not the same claim as "verified" — per this project's no-fabrication rule,
+this gap is stated explicitly rather than silently assumed to work. Verifying this
+(`docker compose up --build` and confirming both healthchecks pass) is the natural
+next step once Docker Desktop is available.
 
 ## Recommended hardening checklist before any real deployment
 

@@ -84,6 +84,28 @@ Compute target for this reconstruction is **CPU-only** — model choices, fine-t
 benchmarking are all sized accordingly (see `docs/MODEL_CARD.md` and `configs/nlp_models.yaml`
 once populated).
 
+### Running the full stack
+
+```bash
+# Backend
+pip install -e .
+uvicorn emafrs.api.app:app --reload   # http://localhost:8000
+
+# Frontend (separate terminal)
+cd frontend
+npm install
+cp .env.example .env                  # points at the backend above by default
+npm run dev                            # http://localhost:5173
+```
+
+Or via Docker Compose (backend on :8000, dashboard on :8080) — see
+[`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md) for the disclosed caveat
+that the Docker build itself has not been verified in this development environment:
+
+```bash
+docker compose up --build
+```
+
 ### Helper MCP server (dev aid, not part of the research system)
 
 ```bash
@@ -115,6 +137,6 @@ src/emafrs/
 configs/           model registries, hyperparameters
 docs/              all required project documentation
 tests/             unit / integration / e2e
-frontend/          dashboard
+frontend/          React + TypeScript + Vite dashboard (real components, no mocked data — see docs/PRODUCTION_DEPLOYMENT.md)
 scripts/           one-off / CLI utilities
 ```
