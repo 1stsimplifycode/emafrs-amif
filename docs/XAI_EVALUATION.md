@@ -61,6 +61,93 @@ This finding argues for caution in how the dashboard (once built) presents IG at
 "the reason," which this result underlines is not merely a legal hedge but an empirically
 supported and now-reproduced caveat for this specific trained model.
 
+## Deep diagnostic: why is faithfulness ≈ 0? (trustworthiness-audit remediation pass)
+
+The finding above (faithfulness statistically indistinguishable from zero, reproduced
+across three sample sizes) was investigated further rather than left as an unexplained
+weakness. Reproduce: `python scripts/run_xai_faithfulness_diagnostic.py`. Real run, same
+RAMA model/test set, n=60. Full raw output: `docs/_xai_diagnostic_results.md`.
+
+**A. Baseline/reference choice.** The current IG baseline is an all-zero vector in
+z-scored feature space — which, because every financial/microstructure feature is
+rolling-z-scored before the model ever sees it, is **not** the naive "raw-scale zero"
+anti-pattern XAI literature warns about; it is equivalent to "the feature's own recent
+rolling-window mean," a legitimate neutral reference point. Tested anyway: a second IG run
+used a real-training-sample baseline (a randomly drawn real row from the training set,
+averaged per-sample) instead of zero.
+
+| Baseline | Faithfulness | Deletion AUC | Insertion AUC |
+|---|---:|---:|---:|
+| Zero (current, ≈ rolling mean) | −0.0004 | 0.4143 | 0.4062 |
+| Random real training sample | −0.0008 | 0.4140 | 0.4039 |
+
+Nearly identical. **Baseline choice is ruled out as the explanation.**
+
+**B. Gradient saturation.** Gradient norm was measured at 5 points along the IG
+integration path (baseline → real input) for 5 real samples. Norms consistently roughly
+HALVE from the baseline (~0.28-0.30) to the real input (~0.12-0.16) — a real, measurable
+partial-saturation effect (the model's response is flatter near real data than near the
+artificial zero point) — but not a collapse to ~0, and (per point D below) a
+gradient-FREE method shows the identical null faithfulness result, so saturation cannot be
+the *primary* explanation, only a possible contributing one.
+
+**C. Input scaling.** Already rolling z-scored (see above); not a separate issue from
+baseline choice.
+
+**D. Alternative attribution methods.** Gradient x Input (local gradient only, no path
+integration) and Occlusion (genuinely removal-based, zero gradient dependency at all) were
+implemented (`src/emafrs/xai/alternative_attributions.py`) and run through the identical
+evaluation battery:
+
+| Method | Faithfulness | Deletion AUC | Insertion AUC | Comprehensiveness | Sufficiency |
+|---|---:|---:|---:|---:|---:|
+| IG (zero baseline) | −0.0004 | 0.4143 | 0.4062 | +0.0021 | +0.0071 |
+| IG (random-sample baseline) | −0.0008 | 0.4140 | 0.4039 | +0.0017 | +0.0168 |
+| Gradient x Input | +0.0020 | 0.4137 | 0.4048 | +0.0045 | +0.0167 |
+| Occlusion (gradient-free) | +0.0106 | 0.4096 | 0.4100 | +0.0132 | +0.0061 |
+
+**All four methods — spanning two IG baselines, a pure local-gradient method, and a
+gradient-free removal method — agree: faithfulness is near zero, deletion AUC ≈ insertion
+AUC (~0.41 both directions, when a faithful ranking should show insertion clearly exceed
+deletion), and both comprehensiveness and sufficiency are small (<0.02 in magnitude,
+i.e. removing OR isolating the "important" features barely moves predicted probability
+either way).** This rules out IG's specific mechanism (path integration from a baseline)
+as the cause: a gradient-free method with no baseline at all shows the same pattern.
+
+**E/F. Fusion / modality dominance — corrected finding, not a fusion-collapse result.**
+The raw diagnostic run showed 100% of IG attribution mass on the financial modality and
+0% on microstructure. Verified directly before drawing any conclusion: **only 1 of the
+160 test-set rows has `microstructure_available=1`** (real intraday data covers ~5-7
+trading days total, per the scope limitation in `docs/EXPERIMENT_PROTOCOL.md`), and none
+of the 60 randomly-sampled diagnostic rows happened to include that one row. For every
+sampled row, the microstructure feature block was already exactly equal to the IG
+baseline (both zero-filled), so near-zero microstructure attribution is a **direct,
+correct consequence of microstructure being absent from the sample**, not evidence the
+model ignores microstructure when it is genuinely present. This means the faithfulness
+null result reported above is effectively a statement about the **financial-only** decision
+surface, not a multimodal fusion problem — an important, previously-unstated precision
+correction.
+
+**G. Synthesis and root-cause conclusion.** Four independent attribution mechanisms agree;
+baseline choice was ruled out; saturation is real but partial and cannot be the sole cause
+(a gradient-free method shows the same result); the near-equal deletion/insertion AUCs and
+small comprehensiveness/sufficiency values indicate the model's predicted probabilities
+simply do not vary sharply with any small feature subset — consistent with, and a natural
+consequence of, the already-documented finding that this financial-direction-prediction
+task is hard and close to a class-frequency baseline (~38-42% accuracy on 3 classes, walk-forward
+null result, `docs/EXPERIMENT_PROTOCOL.md`). **Root-cause confidence: strongly supported,
+not merely plausible** — this was tested via four independent attribution methods plus a
+direct saturation measurement plus a direct check of the modality-coverage confound, not
+inferred from a single number. **No attribution method would be more "faithful" here,
+because the model does not have a sharp, small-feature-subset-driven decision surface for
+any method to correctly detect.** Per the stop conditions for this remediation pass: this
+is now treated as a property intrinsic to this trained model's weak signal on a hard task,
+not a fixable explainability-tooling problem — further explainer-shopping (SHAP, etc.)
+would be expected to reproduce the same null result and was not pursued further. **The
+actual fix, if one exists, is improving the underlying model's predictive sharpness** (a
+separate, harder problem already tracked as a predictive-performance limitation), not
+swapping explanation methods.
+
 ## Stability
 
 **Method**: for each sampled row, add small Gaussian noise (std=0.05 in the model's
@@ -127,11 +214,9 @@ sensitivity to its own inputs. `xai/nlg.py`'s generated text enforces this wordi
 
 ## Not yet evaluated
 
-- Occlusion-based (removal-based) attribution as a direct cross-check against IG's
-  gradient-based attribution specifically for the faithfulness question — the
-  larger-sample test above ruled out noise as the explanation for faithfulness≈0, leaving
-  "gradient-vs-removal attribution divergence" as the strongest remaining untested
-  hypothesis. Not yet implemented.
+- Occlusion-based (removal-based) attribution as a direct cross-check against IG:
+  **done** — see "Deep diagnostic" above. Occlusion shows the same near-zero
+  faithfulness as IG, ruling out gradient-vs-removal divergence as the explanation.
 - The same battery on Model C (static fusion) for a head-to-head XAI-quality comparison
   against Model D (RAMA) — currently only RAMA has been evaluated.
 - SHAP-based attribution as a cross-check against Integrated Gradients (both are installed

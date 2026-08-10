@@ -10,6 +10,13 @@ from typing import Callable
 import numpy as np
 
 
+def _trapezoid_auc(y: list[float], dx: float) -> float:
+    """Trapezoidal AUC without depending on numpy.trapz/trapezoid (renamed/removed across
+    numpy versions -- avoids a version-dependent import)."""
+    y = np.asarray(y, dtype=float)
+    return float(np.sum((y[:-1] + y[1:]) / 2.0 * dx))
+
+
 def faithfulness_score(
     predict_proba_fn: Callable[[np.ndarray], np.ndarray],
     x: np.ndarray,
@@ -40,6 +47,89 @@ def faithfulness_score(
         random_drops.append(baseline_proba - predict_proba_fn(x_rand_removed)[target_class])
 
     return float(top_drop - np.mean(random_drops))
+
+
+def deletion_auc(
+    predict_proba_fn: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    attributions: np.ndarray,
+    target_class: int,
+) -> float:
+    """Deletion metric (Petsiuk et al. 2018 RISE): progressively zero out features in
+    DESCENDING |attribution| order (most-attributed first) and trace the predicted
+    probability for target_class after each removal. Returns the area under that curve
+    (trapezoidal, x-axis = fraction of features removed 0..1). A FAITHFUL attribution
+    should crash the probability early (most-important features removed first), giving a
+    LOW AUC. A random/uninformative attribution gives an AUC close to the curve of
+    removing features in random order. This is a full-curve generalization of
+    `faithfulness_score`'s single top-k point."""
+    order = np.argsort(-np.abs(attributions))
+    n = len(x)
+    x_work = x.copy()
+    probs = [predict_proba_fn(x_work)[target_class]]
+    for idx in order:
+        x_work = x_work.copy()
+        x_work[idx] = 0.0
+        probs.append(predict_proba_fn(x_work)[target_class])
+    return _trapezoid_auc(probs, dx=1.0 / n)
+
+
+def insertion_auc(
+    predict_proba_fn: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    attributions: np.ndarray,
+    target_class: int,
+) -> float:
+    """Insertion metric (Petsiuk et al. 2018): the mirror of deletion -- start from an
+    all-zero (baseline) input and progressively REVEAL features in descending
+    |attribution| order, tracing predicted probability as evidence is added back. Returns
+    the AUC. A faithful attribution should raise the probability quickly (most-important
+    features revealed first), giving a HIGH AUC."""
+    order = np.argsort(-np.abs(attributions))
+    n = len(x)
+    x_work = np.zeros_like(x)
+    probs = [predict_proba_fn(x_work)[target_class]]
+    for idx in order:
+        x_work = x_work.copy()
+        x_work[idx] = x[idx]
+        probs.append(predict_proba_fn(x_work)[target_class])
+    return _trapezoid_auc(probs, dx=1.0 / n)
+
+
+def comprehensiveness(
+    predict_proba_fn: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    attributions: np.ndarray,
+    target_class: int,
+    top_k: int = 5,
+) -> float:
+    """ERASER-style comprehensiveness: how much predicted probability DROPS when the
+    top_k attributed features are removed, with NO random-baseline subtraction (unlike
+    `faithfulness_score`) -- the raw magnitude of the claimed evidence's importance.
+    Higher = the attributed features were more necessary to the prediction."""
+    baseline_proba = predict_proba_fn(x)[target_class]
+    top_idx = np.argsort(-np.abs(attributions))[:top_k]
+    x_removed = x.copy()
+    x_removed[top_idx] = 0.0
+    return float(baseline_proba - predict_proba_fn(x_removed)[target_class])
+
+
+def sufficiency(
+    predict_proba_fn: Callable[[np.ndarray], np.ndarray],
+    x: np.ndarray,
+    attributions: np.ndarray,
+    target_class: int,
+    top_k: int = 5,
+) -> float:
+    """ERASER-style sufficiency: how CLOSE the prediction using ONLY the top_k attributed
+    features (everything else zeroed) is to the prediction using the full input --
+    returned as (full_proba - top_k_only_proba), so LOWER is more sufficient (the top_k
+    features alone nearly reproduce the full prediction)."""
+    baseline_proba = predict_proba_fn(x)[target_class]
+    top_idx = np.argsort(-np.abs(attributions))[:top_k]
+    x_only_top = np.zeros_like(x)
+    x_only_top[top_idx] = x[top_idx]
+    return float(baseline_proba - predict_proba_fn(x_only_top)[target_class])
 
 
 def stability_score(

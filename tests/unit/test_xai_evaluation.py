@@ -1,10 +1,14 @@
 import numpy as np
 
 from emafrs.xai.evaluation import (
+    comprehensiveness,
     counterfactual_validity_rate,
+    deletion_auc,
     faithfulness_score,
+    insertion_auc,
     sparsity_at_coverage,
     stability_score,
+    sufficiency,
 )
 
 
@@ -71,6 +75,64 @@ def test_sparsity_at_coverage_needs_more_features_when_distributed_evenly():
     attributions = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
     n_needed = sparsity_at_coverage(attributions, coverage=0.8)
     assert n_needed >= 4  # evenly spread -- needs most features to reach 80%
+
+
+def _linear_predict_proba(weights: np.ndarray):
+    def predict_proba_fn(x: np.ndarray) -> np.ndarray:
+        score = float(np.dot(weights, x))
+        p1 = 1 / (1 + np.exp(-score))
+        return np.array([1 - p1, p1])
+    return predict_proba_fn
+
+
+def test_deletion_auc_lower_for_correct_than_uninformative_attribution():
+    """Removing the truly-influential features first should crash probability faster
+    (lower AUC) than removing uninformative ones first."""
+    weights = np.array([5.0, 5.0, 0.0, 0.0, 0.0])
+    predict_proba_fn = _linear_predict_proba(weights)
+    x = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+
+    correct_attr = np.array([5.0, 5.0, 0.01, 0.01, 0.01])
+    wrong_attr = np.array([0.01, 0.01, 0.01, 5.0, 5.0])
+
+    auc_correct = deletion_auc(predict_proba_fn, x, correct_attr, target_class=1)
+    auc_wrong = deletion_auc(predict_proba_fn, x, wrong_attr, target_class=1)
+    assert auc_correct < auc_wrong
+
+
+def test_insertion_auc_higher_for_correct_than_uninformative_attribution():
+    """Revealing the truly-influential features first should raise probability faster
+    (higher AUC) than revealing uninformative ones first."""
+    weights = np.array([5.0, 5.0, 0.0, 0.0, 0.0])
+    predict_proba_fn = _linear_predict_proba(weights)
+    x = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+
+    correct_attr = np.array([5.0, 5.0, 0.01, 0.01, 0.01])
+    wrong_attr = np.array([0.01, 0.01, 0.01, 5.0, 5.0])
+
+    auc_correct = insertion_auc(predict_proba_fn, x, correct_attr, target_class=1)
+    auc_wrong = insertion_auc(predict_proba_fn, x, wrong_attr, target_class=1)
+    assert auc_correct > auc_wrong
+
+
+def test_comprehensiveness_positive_when_top_features_are_truly_influential():
+    weights = np.array([5.0, 5.0, 0.0, 0.0, 0.0])
+    predict_proba_fn = _linear_predict_proba(weights)
+    x = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+    correct_attr = np.array([5.0, 5.0, 0.01, 0.01, 0.01])
+    score = comprehensiveness(predict_proba_fn, x, correct_attr, target_class=1, top_k=2)
+    assert score > 0.1  # removing the two truly-influential features should meaningfully drop confidence
+
+
+def test_sufficiency_small_gap_when_top_features_alone_reproduce_full_prediction():
+    weights = np.array([5.0, 5.0, 0.0, 0.0, 0.0])
+    predict_proba_fn = _linear_predict_proba(weights)
+    x = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+    correct_attr = np.array([5.0, 5.0, 0.01, 0.01, 0.01])
+    # keeping only features 0,1 (the ONLY ones with nonzero weight) must reproduce the
+    # full prediction exactly, since features 2-4 contribute nothing regardless
+    score = sufficiency(predict_proba_fn, x, correct_attr, target_class=1, top_k=2)
+    assert abs(score) < 1e-6
 
 
 def test_counterfactual_validity_rate_over_multiple_samples():
