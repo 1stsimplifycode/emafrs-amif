@@ -74,13 +74,15 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   YouTube — World Bank, IMF, GDELT, and Stooq are not integrated. Per build brief Section
   12 ("data quality > API quantity"), breadth was intentionally not prioritized over
   provenance-tracked reliability of the sources that are integrated.
-- **The NewsAPI key provided for this project does not work.** Verified directly (a raw
-  HTTP request to newsapi.org bypassing all project code) that the key is rejected with
-  `401 apiKeyInvalid`. This is an account/key issue, not a defect in
-  `emafrs/data/newsapi_client.py` -- `NEWS_API_KEY` is present in `.env` and
-  `CONFIG.is_configured("newsapi")` correctly reports `True`, but live calls will fail
-  until a valid key is supplied. News-derived text (as opposed to YouTube-derived text)
-  remains unavailable until this is resolved.
+- **NewsAPI key resolved.** The first three keys provided were rejected with `401
+  apiKeyInvalid` (verified via raw HTTP request bypassing all project code); root cause
+  turned out to be key FORMAT, not the account -- those three were UUID-shaped
+  (8-4-4-4-12 with dashes), while a real NewsAPI key is a 32-character hex string with no
+  dashes. A correctly-formatted key was supplied and verified working end-to-end through
+  `emafrs/data/newsapi_client.py` against live articles. News-derived text (as a second
+  real source alongside YouTube) is architecturally ready to wire into
+  `emafrs/nlp/text_dataset.py`-style aggregation but has not been done yet -- see "Not yet
+  evaluated" items tracked elsewhere in this file and in `docs/ABLATION_STUDY.md`.
 - SEC EDGAR enforces strict per-IP rate limiting / bot-defense on this environment; a live
   403 was observed during development (see `docs/DATA_SOURCES_AND_APIS.md`). The DAL
   surfaces this as `ProviderUnavailableError` rather than masking it, but it means SEC EDGAR

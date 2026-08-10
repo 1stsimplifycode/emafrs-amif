@@ -24,9 +24,8 @@ and the Resilience section below for what "correctly" means here).
 
 ## Verified with real keys (update)
 
-Alpha Vantage and YouTube keys were added to `.env` and exercised for real; NewsAPI's
-key was also added but does not work (see below). Findings, each also cross-referenced
-in `docs/LIMITATIONS.md`:
+Alpha Vantage, YouTube, and NewsAPI keys were added to `.env` and exercised for real.
+Findings, each also cross-referenced in `docs/LIMITATIONS.md`:
 
 - **Alpha Vantage**: `TIME_SERIES_DAILY_ADJUSTED` now returns `"This is a premium
   endpoint"` on the free tier — a provider policy change since this client was first
@@ -39,10 +38,12 @@ in `docs/LIMITATIONS.md`:
   one real run — see `docs/TEXT_MODALITY_PILOT.md`). This is a provider-side anti-bot
   heuristic, not a defect in this project's code, and is not fully mitigated by the
   courtesy delay this project added between requests.
-- **NewsAPI.org**: the specific key provided for this project is rejected directly by
-  newsapi.org (`401 apiKeyInvalid`), verified with a raw HTTP request bypassing all
-  project code. `CONFIG.is_configured("newsapi")` correctly reports the key as *present*
-  (it is syntactically a key), but live calls fail until a valid key is supplied.
+- **NewsAPI.org**: works. The first three keys provided were all rejected
+  (`401 apiKeyInvalid`, verified with raw HTTP requests bypassing all project code) --
+  root cause was key FORMAT, not the account: those three were UUID-shaped
+  (8-4-4-4-12 with dashes); a real NewsAPI key is a 32-character hex string with no
+  dashes. A correctly-formatted key works, verified against live articles through both a
+  raw request and `emafrs/data/newsapi_client.py` directly.
 
 ## Resilience behavior (`src/emafrs/data/base.py`, `cache.py`)
 

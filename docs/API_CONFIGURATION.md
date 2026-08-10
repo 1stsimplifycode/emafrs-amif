@@ -44,12 +44,14 @@ it — check `git diff --cached` before pushing if unsure.
 
 ## What is currently configured in this development environment
 
-As of the research phases (data acquisition through experiment protocol), **only
-yfinance and SEC EDGAR were exercised against live data** — no NewsAPI/YouTube/Alpha
-Vantage/Finnhub/FRED key was configured. See `docs/LIMITATIONS.md` for what this means
-for the text/affective modality (not populated in any trained dataset yet) and
-`docs/DATA_SOURCES_AND_APIS.md` for the one live SEC EDGAR rate-limit event observed
-during DAL development (correctly surfaced as an error, not masked).
+As of the initial research phases (data acquisition through experiment protocol), only
+yfinance and SEC EDGAR had been exercised against live data. YouTube, Alpha Vantage, and
+NewsAPI keys were added afterward and are now verified working (see
+`docs/DATA_SOURCES_AND_APIS.md`'s "Verified with real keys" section for the two real
+compatibility bugs and one key-format issue found and fixed along the way). Finnhub and
+FRED keys are still not configured. See `docs/LIMITATIONS.md` and
+`docs/TEXT_MODALITY_PILOT.md` for what real YouTube-derived text data has (and hasn't
+yet) unlocked for the text/affective modality.
 
 ## Rate limit and caching behavior
 
