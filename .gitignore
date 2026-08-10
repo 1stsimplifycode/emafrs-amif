@@ -17,6 +17,7 @@ venv/
 data/cache/
 data/raw/
 data/processed/
+data/*.db
 models/checkpoints/
 *.ckpt
 *.pt
