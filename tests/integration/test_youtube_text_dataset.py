@@ -42,4 +42,4 @@ def test_fetch_and_aggregate_real_youtube_videos():
 
     daily = aggregate_daily_text_features(records)
     assert len(daily) <= len(records)  # same-day videos collapse to one row
-    assert daily["text_n_videos"].sum() == len(records)
+    assert daily["text_n_items"].sum() == len(records)

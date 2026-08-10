@@ -31,7 +31,7 @@ def _synthetic_text_daily(dates: pd.DatetimeIndex) -> pd.DataFrame:
     rng = np.random.default_rng(3)
     records = [
         {
-            "video_id": f"v{i}", "title": "t", "published_at": d.isoformat() + "Z",
+            "source": "youtube", "item_id": f"v{i}", "title": "t", "published_at": d.isoformat() + "Z",
             "sentiment_polarity": float(rng.uniform(-0.5, 0.5)),
             "hype_score": float(rng.uniform(0.1, 0.9)),
             "intensity": float(rng.uniform(0.2, 0.8)),
@@ -69,7 +69,7 @@ def test_dataset_with_real_shaped_text_daily_sets_availability_and_zscores():
 
     assert "text_available" in bundle.text_columns
     assert "text_sentiment_polarity" in bundle.text_columns
-    assert "text_n_videos" in bundle.text_columns
+    assert "text_n_items" in bundle.text_columns
 
     # at least SOME rows must be marked available (the video dates, once enough history
     # has accumulated for the rolling z-score warm-up)

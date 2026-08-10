@@ -61,12 +61,21 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   but does not eliminate it. Practical consequence: real text-modality datasets built from
   this environment will have a much lower video yield than videos found, and this must be
   accounted for (via the `text_available` mask, already handled) rather than assumed away.
-- **Text modality is now technically wired end-to-end but data-starved.** As of the pilot
-  run, only 2 of ~160 test-set rows carried real text signal (see
-  `docs/TEXT_MODALITY_PILOT.md` for the full breakdown: IP-blocking plus rolling z-score
-  warm-up consuming most of the remaining sparse signal). The 3-modality training result
-  is explicitly reported as underpowered/inconclusive, not as evidence the text modality
-  doesn't help.
+- **Text modality is technically wired end-to-end (YouTube + NewsAPI, unified schema) but
+  every real run to date has been data-starved.** The YouTube-only pilot got 2 of ~160
+  test-set rows with real text signal; a follow-up combined YouTube+NewsAPI pilot got
+  **0 of any** split row (see `docs/TEXT_MODALITY_PILOT.md` for both breakdowns). The
+  combined-pilot's zero-availability result has two compounding, precisely diagnosed
+  causes: (1) NewsAPI articles published on non-trading days (weekends) never align to
+  any row in the OHLCV trading calendar and are silently dropped by the join, and (2) the
+  leakage-safe rolling z-score warm-up (`min_periods=window`) requires more prior
+  text-bearing days than a short pilot accumulates. Both 3-modality training results to
+  date are explicitly reported as uninformative about text modality value, not as
+  evidence it doesn't help. A scoped, not-yet-implemented correction for cause (1) —
+  attributing non-trading-day text to the next trading day's information set, the
+  conventional treatment for after-hours/weekend news in financial modeling — is recorded
+  in `docs/TEXT_MODALITY_PILOT.md` but was deliberately not rushed in without its own
+  review and test coverage.
 
 ## Data sources
 
@@ -79,10 +88,12 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   turned out to be key FORMAT, not the account -- those three were UUID-shaped
   (8-4-4-4-12 with dashes), while a real NewsAPI key is a 32-character hex string with no
   dashes. A correctly-formatted key was supplied and verified working end-to-end through
-  `emafrs/data/newsapi_client.py` against live articles. News-derived text (as a second
-  real source alongside YouTube) is architecturally ready to wire into
-  `emafrs/nlp/text_dataset.py`-style aggregation but has not been done yet -- see "Not yet
-  evaluated" items tracked elsewhere in this file and in `docs/ABLATION_STUDY.md`.
+  `emafrs/data/newsapi_client.py` against live articles. News-derived text is now wired
+  into `emafrs/nlp/text_dataset.py` alongside YouTube under one unified schema
+  (`fetch_news_affective_records`, source-agnostic aggregation proven by
+  `test_aggregation_is_source_agnostic_by_design`); see `docs/TEXT_MODALITY_PILOT.md` for
+  the real combined-pilot run and why it was still uninformative about text modality
+  value.
 - SEC EDGAR enforces strict per-IP rate limiting / bot-defense on this environment; a live
   403 was observed during development (see `docs/DATA_SOURCES_AND_APIS.md`). The DAL
   surfaces this as `ProviderUnavailableError` rather than masking it, but it means SEC EDGAR

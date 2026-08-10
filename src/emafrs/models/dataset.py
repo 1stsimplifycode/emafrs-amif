@@ -17,14 +17,14 @@ Design decisions (each disclosed rather than silently made):
    imputed/faked. This is a genuine, disclosed coverage limitation, not a bug -- it will
    improve automatically as more live-pipeline history accumulates over time.
 
-4. Text (ASEM) modality: real YouTube-derived daily affective features can now be joined
-   in via `text_daily` (a DataFrame from
-   `emafrs.nlp.text_dataset.aggregate_daily_text_features`, itself built from REAL
-   transcripts of REAL searched videos -- see that module). This function does not fetch
-   YouTube data itself (search + ASEM processing is comparatively expensive and quota-
-   limited, so it is deliberately a caller-supplied, pre-computed input, computed once and
-   reused across folds/experiments rather than re-fetched every call). Dates without any
-   video get `text_available=0` and zero-filled feature columns -- the identical masking
+4. Text (ASEM) modality: real YouTube- and/or NewsAPI-derived daily affective features can
+   now be joined in via `text_daily` (a DataFrame from
+   `emafrs.nlp.text_dataset.aggregate_daily_text_features`, itself built from REAL video
+   transcripts and/or REAL news articles -- see that module). This function does not fetch
+   YouTube/NewsAPI data itself (search + ASEM processing is comparatively expensive and
+   quota-limited, so it is deliberately a caller-supplied, pre-computed input, computed
+   once and reused across folds/experiments rather than re-fetched every call). Dates
+   without any item get `text_available=0` and zero-filled feature columns -- the identical masking
    pattern already used for microstructure, never fabricated.
 """
 from __future__ import annotations
@@ -186,15 +186,15 @@ def build_daily_dataset_from_ohlcv(
     if text_daily is not None and not text_daily.empty:
         from emafrs.nlp.text_dataset import TEXT_FEATURE_COLUMNS
 
-        # Video coverage is far sparser than daily financial/microstructure data (a handful
-        # of videos over months, not one row per trading day), so the z-score window is
-        # capped much smaller than zscore_window's 126-day default -- reusing that default
-        # here would NaN-out nearly every row waiting for a 126-observation warm-up that
-        # may never accumulate at this sparsity.
+        # Text coverage (YouTube and/or NewsAPI) is far sparser than daily financial/
+        # microstructure data (a handful of items over months, not one row per trading
+        # day), so the z-score window is capped much smaller than zscore_window's 126-day
+        # default -- reusing that default here would NaN-out nearly every row waiting for
+        # a 126-observation warm-up that may never accumulate at this sparsity.
         text_zscore_window = min(21, max(3, len(text_daily) - 1))
         text_daily_z = rolling_zscore_frame(
             text_daily, window=text_zscore_window,
-            columns=[*TEXT_FEATURE_COLUMNS, "text_n_videos"],
+            columns=[*TEXT_FEATURE_COLUMNS, "text_n_items"],
         )
         text_columns = list(text_daily_z.columns) + ["text_available"]
 
