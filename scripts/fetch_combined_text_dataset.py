@@ -59,17 +59,23 @@ def main():
     combined_records = yt_records + news_records
     print(f"\nCombined: {len(yt_records)} YouTube + {len(news_records)} NewsAPI = {len(combined_records)} total items")
 
-    text_daily = aggregate_daily_text_features(combined_records)
-    print(f"Daily aggregated text rows: {len(text_daily)}")
-    print(text_daily)
-
-    print(f"\nBuilding full dataset for {TICKER} (financial + microstructure + text)...")
+    print(f"\nFetching {TICKER} OHLCV first (need the trading calendar for causal date mapping)...")
     df, _ = YFinanceClient().get_ohlcv(TICKER, period="5y", interval="1d")
     intraday_df = None
     try:
         intraday_df, _ = YFinanceClient().get_intraday_1m(TICKER)
     except Exception:
         pass
+
+    # Map each item's published date FORWARD (never backward) to the next real trading
+    # day in df.index -- corrects the root cause diagnosed in docs/TEXT_MODALITY_PILOT.md:
+    # weekend-published articles previously never matched any trading-day row and were
+    # silently dropped by the join. This is strictly causal (see
+    # emafrs.nlp.text_dataset._map_to_next_trading_day's docstring) -- it can only push a
+    # date LATER, never earlier, so it introduces no look-ahead.
+    text_daily = aggregate_daily_text_features(combined_records, trading_days=df.index)
+    print(f"Daily aggregated text rows (mapped to next trading day): {len(text_daily)}")
+    print(text_daily)
 
     bundle = build_daily_dataset_from_ohlcv(
         df, TICKER, horizon=1, deadzone=0.0025, include_microstructure=True,

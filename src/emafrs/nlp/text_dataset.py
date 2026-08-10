@@ -44,6 +44,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
 
 from emafrs.data.newsapi_client import NewsAPIClient
@@ -239,17 +240,55 @@ def fetch_news_affective_records(
     return records, stats
 
 
-def aggregate_daily_text_features(records: list[dict]) -> pd.DataFrame:
+def _map_to_next_trading_day(dates: pd.Series, trading_days: pd.DatetimeIndex) -> pd.Series:
+    """Maps each date to the next trading day AT OR AFTER it (forward-only, never
+    backward) -- e.g. a Saturday-published article maps to the following Monday if Monday
+    is a trading day. This is strictly causal: information published on a non-trading day
+    could not have been priced in until the market NEXT opens, so attributing it to that
+    next open is the conservative, correct treatment (the same convention used for
+    after-hours/weekend earnings releases in financial modeling generally), never a
+    look-ahead -- it can only ever push a date LATER, never earlier. Dates already ON a
+    trading day map to themselves (searchsorted 'left' returns the date itself when
+    present). Dates after the LAST trading day in `trading_days` get no valid mapping
+    (there is no future trading day yet to attribute them to) and are dropped by the
+    caller, never mapped backward to the last available day -- that direction would be
+    leakage (attributing information to a date before it existed)."""
+    trading_values = trading_days.sort_values().to_numpy()
+    positions = np.searchsorted(trading_values, dates.to_numpy(), side="left")
+    valid = positions < len(trading_values)
+    mapped = pd.Series(pd.NaT, index=dates.index, dtype="datetime64[ns]")
+    mapped[valid] = trading_values[positions[valid]]
+    return mapped
+
+
+def aggregate_daily_text_features(
+    records: list[dict], trading_days: pd.DatetimeIndex | None = None
+) -> pd.DataFrame:
     """Aggregates per-item (video or article, from either/both sources) affective records
     to one row per calendar date (mean across same-day items + an item count). Returns an
     EMPTY (zero-row) DataFrame with the correct columns if `records` is empty, never an
     error -- callers join this against the main dataset and must treat missing dates as
-    text_available=0, not a failure."""
+    text_available=0, not a failure.
+
+    `trading_days`: optional trading-day calendar (e.g. the OHLCV DataFrame's index). When
+    provided, each item's published date is remapped FORWARD to the next trading day at or
+    after it before aggregation (see `_map_to_next_trading_day`) -- without this, articles
+    published on non-trading days (most commonly weekends) silently never match any row in
+    a trading-day-indexed dataset and are discarded by the eventual join, which is exactly
+    the root cause diagnosed in docs/TEXT_MODALITY_PILOT.md's combined-pilot 0-usable-rows
+    finding. When omitted (the default), behavior is unchanged from before this parameter
+    existed -- raw calendar-date aggregation, no trading-calendar awareness."""
     if not records:
         return pd.DataFrame(columns=["text_n_items", *TEXT_FEATURE_COLUMNS])
 
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["published_at"], utc=True).dt.tz_localize(None).dt.normalize()
+
+    if trading_days is not None:
+        df["date"] = _map_to_next_trading_day(df["date"], trading_days)
+        df = df.dropna(subset=["date"])
+        if df.empty:
+            return pd.DataFrame(columns=["text_n_items", *TEXT_FEATURE_COLUMNS])
 
     value_cols = ["sentiment_polarity", "hype_score", "intensity"] + [f"emotion_{c}" for c in EMOTION_CATEGORIES]
     daily = df.groupby("date")[value_cols].mean()

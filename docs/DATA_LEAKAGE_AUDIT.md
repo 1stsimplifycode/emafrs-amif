@@ -30,6 +30,34 @@ is worthless; these two tests are the evidence it isn't.
 | Target leakage (label computed from data also used as a feature at the same timestamp) | `emafrs.models.labels.build_ternary_labels` uses `close.shift(-horizon)` (strictly future) to build `y_t`; features are built only from data at or before `t`. Verified directly via the same truncation methodology: `build_daily_dataset_from_ohlcv(df.iloc[:cutoff], ...)` vs. the full series produces byte-identical labels AND byte-identical financial/technical features on rows safely before the cutoff (max abs diff 0.0 for both, checked against a synthetic 500-row series). **Evaluated: no target leakage found in the label/feature construction itself.** | **Evaluated** |
 | Regime-probability leakage (a leakage pathway this project did not originally anticipate, found during the trustworthiness audit) | The SAME truncation check applied to the full assembled feature set revealed the regime-probability columns (`regime_p1..p4`) were NOT truncation-invariant, unlike every other feature. Root cause: `RegimeModel.predict_proba` used hmmlearn's SMOOTHED (forward-backward) posterior over the entire train+val+test sequence in one call, so a date's regime probability could in principle depend on later dates, even though the HMM's fitted parameters were correctly train-only. Measured to be numerically negligible on real SPY data (<1e-5 beyond 1-2 rows from a sequence boundary, because this fitted HMM produces near-deterministic regime assignments) once the confound of "different train/test split changing the fitted model" was controlled for. **Corrected regardless**: `RegimeModel.predict_proba_causal` (forward-filtering only, no backward pass) is now used by `dataset.py`, proven exactly truncation-invariant in `tests/unit/test_hmm_regime.py::test_predict_proba_causal_is_truncation_invariant`. Full writeup: `docs/EXPERIMENT_PROTOCOL.md`'s "Regime-probability leakage" section. | **Evaluated and corrected** |
 | Survivorship bias | Not applicable in this project's current single-fixed-ticker configuration (SPY only, chosen ahead of time and never dropped for underperforming) — survivorship bias in the classic sense requires a multi-ticker universe backtest that excludes delisted/failed constituents, which does not exist here. Would need to be revisited if a multi-ticker universe backtest is ever added. | **N/A for current scope, not a forever-pending item** |
+| Text/news timestamp-to-trading-day mapping (found and fixed during remediation) | NewsAPI articles published on non-trading days (weekends) previously matched no row in the trading-calendar-indexed dataset and were silently dropped by the join -- the root cause of the combined-pilot's 0-usable-rows finding (`docs/TEXT_MODALITY_PILOT.md`). Fixed via `aggregate_daily_text_features(records, trading_days=...)`, which maps each item's published date FORWARD ONLY to the next real trading day (`_map_to_next_trading_day`) -- never backward, so no look-ahead is introduced (a date can only be pushed later, matching the standard convention for after-hours/weekend news in financial modeling). Proven causal directly: `test_mapping_never_moves_a_date_earlier_property_check` and a truncation-invariance test (`test_mapping_is_truncation_invariant_...`) in `tests/unit/test_text_dataset.py`, following the same methodology as the HMM fix above. | **Evaluated and corrected** |
+| Imputation (constant zero-fill for unavailable modalities) | `combined[cols] = combined[cols].fillna(0.0)` for microstructure/text columns on dates with no real data -- verified this is a CONSTANT fill (0.0), never a computed value from neighboring or future rows. Direct code search confirms no `.bfill()`/backward-fill exists anywhere in `src/emafrs` (`align_to_business_calendar` uses `.ffill()` only, already audited above). | **Evaluated, clean** |
+| PCA / feature selection | Neither exists anywhere in this codebase (direct code search) -- no dimensionality-reduction or data-driven feature-selection step that could have been fit using test-set statistics. | **N/A, not used** |
+| Hyperparameter / threshold / model selection | Direct code search confirms no hyperparameter-tuning or grid-search loop exists anywhere in `src/emafrs` that touches `test_idx`. `train_fusion_model` (`src/emafrs/models/train.py`) uses `test_idx` only to build the FINAL evaluation tensors, strictly after the training loop (which uses `train_idx` for gradients and `val_idx` for early-stopping) has already selected `best_state` -- confirmed by direct inspection of every `test_idx` reference in that file. Fixed constants (`deadzone=0.0025`, `hidden_dim=32`, `n_regime_states=4`, `zscore_window=126`, `shrinkage_weight=2.0`, etc.) are disclosed, fixed design choices, not results of any test-set-touching search. | **Evaluated, clean** |
+| Ensemble weighting | N/A -- this project compares individual trained models (A/B/C/D) rather than combining them into an ensemble; no ensemble-weight-fitting step exists to audit. | **N/A, not used** |
+
+## Explicit temporal information boundary
+
+For any prediction date `t`, everything the model is allowed to use is defined precisely
+as: **data whose real-world availability timestamp is `<= t`, close-of-day.** Concretely:
+
+- Financial/technical features: rolling windows ending at `t`, `min_periods=window`
+  (partial windows are NaN, never computed on fewer points) — see "Design decisions" below.
+- Regime probabilities: `RegimeModel.predict_proba_causal`, a forward-only filter — the
+  probability at `t` depends only on observations at or before `t`; HMM parameters are
+  fit only on the training split's dates.
+- Microstructure features: real intraday data only for the trailing ~5-7 days the
+  provider actually has available "as of" the query time; zero-filled + explicitly
+  flagged (`microstructure_available`) elsewhere, never fabricated for historical dates.
+- Text/news features: item's `published_at` (provider-reported, never ingestion time),
+  mapped forward-only to the next trading day if published on a non-trading day; zero-filled
+  + explicitly flagged (`text_available`) elsewhere.
+- Labels: `close.shift(-horizon)` — strictly future, by design (that is what is being
+  predicted), never used as a feature at the same timestamp.
+- Calibration temperature: fit on the validation split only, applied to (never re-fit on)
+  the test split.
+- Model selection (early stopping): decided by validation-split loss only; the test split
+  is touched exactly once, after training is complete, for final reporting.
 
 ## Design decisions that prevent leakage by construction
 
