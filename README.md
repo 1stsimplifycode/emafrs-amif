@@ -42,10 +42,34 @@ Full detail: [`docs/SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md).
 
 ## Status
 
-Early scaffolding. See open tasks / phased roadmap in project tracking. Nothing in this repo
-should be read as a finished result until the corresponding doc under `docs/` says so —
-`docs/*.md` state "Not yet evaluated" for anything not yet run, per the no-fabrication rule this
-project is built under.
+The research core is complete and validated against real data: Data Acquisition Layer, feature
+engineering + leakage audit, regime detection, affective signal extraction + NLP benchmark,
+microstructure proxies, RAMA/VAFE fusion model + baselines A-D, manipulation risk model, XAI layer,
+and a full walk-forward/ablation/calibration experiment protocol. Production deployment (FastAPI
+backend, dashboard, Docker) is the remaining phase — see `docs/PRODUCTION_DEPLOYMENT.md` once it
+lands. Nothing in this repo should be read as a finished result beyond what the corresponding doc
+under `docs/` states — every doc says "Not yet evaluated" for anything not yet run, per the
+no-fabrication rule this project is built under, and several real *negative* findings are reported
+exactly as measured (see `docs/EXPERIMENT_PROTOCOL.md`, `docs/XAI_EVALUATION.md`).
+
+## Documentation index
+
+| Doc | Covers |
+|---|---|
+| [`PDF_TO_IMPLEMENTATION_TRACEABILITY.md`](docs/PDF_TO_IMPLEMENTATION_TRACEABILITY.md) | Every PDF concept mapped to its implementation, dataset, and disclosed corrections |
+| [`RECOVERY_AND_RECONSTRUCTION.md`](docs/RECOVERY_AND_RECONSTRUCTION.md) | What was lost, what this reconstruction is/isn't, method |
+| [`SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md) | Module map, pipeline/RAMA diagrams |
+| [`DATA_SOURCES_AND_APIS.md`](docs/DATA_SOURCES_AND_APIS.md) | Every data source: endpoints, limits, licensing, resilience behavior |
+| [`API_CONFIGURATION.md`](docs/API_CONFIGURATION.md) | How to set up `.env`, what's actually configured here |
+| [`DATASET.md`](docs/DATASET.md) | What data trains/evaluates each model |
+| [`DATA_LEAKAGE_AUDIT.md`](docs/DATA_LEAKAGE_AUDIT.md) | Automated no-lookahead checks, proven to have teeth |
+| [`EXPERIMENT_PROTOCOL.md`](docs/EXPERIMENT_PROTOCOL.md) | Walk-forward validation, regime-wise/calibration results, significance tests |
+| [`ABLATION_STUDY.md`](docs/ABLATION_STUDY.md) | All 11 build-brief ablation rows, honestly scored evaluated/not-yet-evaluated |
+| [`XAI_EVALUATION.md`](docs/XAI_EVALUATION.md) | Faithfulness, stability, sparsity, counterfactual validity — quantified |
+| [`NLP_MODEL_BENCHMARK.md`](docs/NLP_MODEL_BENCHMARK.md) | Generic vs. domain-adapted transformer sentiment comparison |
+| [`MODEL_CARD.md`](docs/MODEL_CARD.md) | One card per model: architecture, training, real metrics, limitations |
+| [`LIMITATIONS.md`](docs/LIMITATIONS.md) | Everything that could not be honestly built, and why |
+| [`REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) | Environment, seeds, exact commands to reproduce every result |
 
 ## Setup
 
