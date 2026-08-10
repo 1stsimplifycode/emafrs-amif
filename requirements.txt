@@ -30,12 +30,18 @@ xgboost>=2.0
 lightgbm>=4.3
 
 # --- Deep learning / NLP (Phase: ASEM, RAMA) — CPU builds ---
+# Install torch from the CPU-only index to avoid the much larger CUDA wheel:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.2
 transformers>=4.40
 captum>=0.7            # Integrated Gradients
 shap>=0.45
 sentence-transformers>=2.6
 accelerate>=0.29
+huggingface_hub>=0.23  # used directly (not via `datasets`) to fetch benchmark data --
+                        # see emafrs/nlp/sentiment_benchmark.py docstring: the `datasets`
+                        # package unconditionally imports pyarrow.dataset, which is blocked
+                        # by Windows Application Control policy on this machine.
 
 # --- Hyperparameter search ---
 optuna>=3.6

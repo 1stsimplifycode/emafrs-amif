@@ -42,6 +42,9 @@ frontend/.next/
 *.log
 logs/
 
+# Regenerable script output (merged into checked-in docs by hand, see script docstrings)
+docs/_*.md
+
 # Editor
 .vscode/
 .idea/

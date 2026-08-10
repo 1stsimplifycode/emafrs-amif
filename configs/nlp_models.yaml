@@ -1,0 +1,90 @@
+# NLP model registry for the Affective Signal Extraction Module (ASEM) and its benchmark.
+#
+# Selection rationale (build brief Section 18A.8: "systematically benchmark representative
+# BERT-family architectures... not download dozens of enormous models"):
+#   - One truly generic-domain sentiment model (movie reviews) as the "no domain adaptation" baseline.
+#   - One other-domain (social media) sentiment model, to show domain adaptation matters
+#     beyond just "financial vs not financial" -- Twitter-tuned RoBERTa is still off-domain
+#     for financial text, giving a 3-point comparison rather than a 2-point one.
+#   - One financial-domain pretrained model (FinBERT) as the domain-adapted comparison point.
+#   - No project-specific fine-tuning of a sentiment head exists yet -- see
+#     docs/NLP_MODEL_BENCHMARK.md "Not yet evaluated" section. This registry will grow a
+#     `project_finetuned_sentiment` entry once/if that training run happens (CPU-feasible
+#     fine-tune, tracked as a follow-up, not fabricated here).
+#
+# All models chosen to be CPU-tractable (<=500MB each) since this reconstruction has no GPU.
+
+sentiment_benchmark:
+  generic_baseline:
+    hf_id: distilbert-base-uncased-finetuned-sst-2-english
+    domain: generic (movie reviews, SST-2)
+    task: binary sentiment (positive/negative)
+    fine_tuned: true
+    params_approx: 66M
+    notes: >
+      No financial-domain adaptation at all -- the "no domain adaptation" anchor point.
+      Binary output only (no neutral class), so it is evaluated on the binary-collapsed
+      version of Financial PhraseBank labels for a fair comparison.
+
+  other_domain:
+    hf_id: cardiffnlp/twitter-roberta-base-sentiment-latest
+    domain: social media (Twitter)
+    task: 3-class sentiment (negative/neutral/positive)
+    fine_tuned: true
+    params_approx: 125M
+    notes: >
+      Domain-adapted, but to a DIFFERENT non-financial domain -- tests whether "any
+      domain adaptation" helps on financial text, or whether it specifically needs to be
+      financial-domain adaptation.
+
+  financial_domain:
+    hf_id: ProsusAI/finbert
+    domain: financial (Financial PhraseBank-trained)
+    task: 3-class sentiment (negative/neutral/positive)
+    fine_tuned: true
+    params_approx: 110M
+    notes: >
+      Financial-domain pretrained AND fine-tuned for financial sentiment. This is the
+      "correct domain" comparison point. (yiyanghkust/finbert-tone was tried first but its
+      config.json lacks a `model_type` field and fails to load via transformers'
+      AutoConfig/pipeline API -- a real compatibility issue discovered during
+      implementation, not a hypothetical; ProsusAI/finbert loads and predicts correctly.)
+
+emotion_zero_shot:
+  model:
+    hf_id: MoritzLaurer/deberta-v3-xsmall-zeroshot-v1.1-all-33
+    domain: "generic NLI/zero-shot (trained across ~33 zero-shot-style classification datasets)"
+    task: zero-shot classification via natural language inference entailment
+    fine_tuned: false
+    params_approx: 70M
+    notes: >
+      No labeled dataset exists for the PDF's 7-category financial emotion taxonomy
+      (confidence, uncertainty, optimism, fear, caution, assertiveness, evasiveness) --
+      per the no-fabrication rule, this is implemented as ZERO-SHOT NLI classification
+      (candidate-label entailment scoring via transformers' zero-shot-classification
+      pipeline), not a fine-tuned classifier, and is reported as such everywhere its
+      output is surfaced. Chosen (over the much larger facebook/bart-large-mnli, 1.6GB)
+      specifically because it's built for the standard HF zero-shot-classification
+      pipeline convention and is CPU-tractable. (An earlier attempted model id,
+      MoritzLaurer/deberta-v3-xsmall-mnli-fever-anli-ling-wanli, does not exist on the
+      Hub -- a 404 discovered during implementation and corrected to this verified id.)
+
+semantic_encoder:
+  model:
+    hf_id: sentence-transformers/all-MiniLM-L6-v2
+    domain: generic
+    task: sentence embedding (384-dim)
+    fine_tuned: true
+    params_approx: 22M
+    notes: CPU-fast, small footprint; used for the Contextual Semantic Encoder (CSE, PDF Sec 6.4.4).
+
+benchmark_dataset:
+  hf_id: financial_phrasebank
+  config: sentences_66agree
+  citation: "Malo, P., Sinha, A., Korhonen, P., Wallenius, J., & Takala, P. (2014). Good debt or bad debt: Detecting semantic orientations in economic texts. JASIST."
+  license: research use, see Hugging Face dataset card
+  notes: >
+    Real, publicly available, human-annotated financial sentiment dataset (~4840 sentences
+    from financial news, filtered to the 66%-agreement subset). Used for inference-only
+    benchmarking per build brief Section 18A.8 ("evaluate them using inference-only
+    benchmarking where possible" when CPU-only fine-tuning of every model is infeasible).
