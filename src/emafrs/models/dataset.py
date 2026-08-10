@@ -73,7 +73,52 @@ def build_daily_dataset(
     zscore_window: int = 126,
     include_microstructure: bool = True,
 ) -> DatasetBundle:
+    """Fetches OHLCV (+ intraday, if requested) fresh and builds a dataset. For walk-
+    forward validation across many folds of the SAME ticker, prefer
+    `build_daily_dataset_from_ohlcv` directly with a pre-fetched (and, per fold, date-
+    truncated) DataFrame to avoid re-fetching from yfinance on every fold."""
     df, _ = YFinanceClient().get_ohlcv(ticker, period=period, interval="1d")
+    intraday_df = None
+    if include_microstructure:
+        try:
+            intraday_df, _ = YFinanceClient().get_intraday_1m(ticker)
+        except Exception:
+            intraday_df = None
+    return build_daily_dataset_from_ohlcv(
+        df, ticker, horizon=horizon, deadzone=deadzone, n_regime_states=n_regime_states,
+        train_frac=train_frac, val_frac=val_frac, zscore_window=zscore_window,
+        include_microstructure=include_microstructure, intraday_df=intraday_df,
+    )
+
+
+def build_daily_dataset_from_ohlcv(
+    df: pd.DataFrame,
+    ticker: str,
+    horizon: int = 1,
+    deadzone: float = 0.0025,
+    n_regime_states: int = 4,
+    train_frac: float = 0.7,
+    val_frac: float = 0.15,
+    zscore_window: int = 126,
+    include_microstructure: bool = True,
+    intraday_df: pd.DataFrame | None = None,
+    explicit_split: tuple[pd.DatetimeIndex, pd.DatetimeIndex, pd.DatetimeIndex] | None = None,
+) -> DatasetBundle:
+    """Same construction as build_daily_dataset, but takes an already-fetched daily OHLCV
+    DataFrame (and optionally a pre-fetched intraday DataFrame) directly -- lets
+    walk-forward validation truncate one fetched series to each fold's "as-of" date without
+    a fresh network call per fold. `include_microstructure=True` with `intraday_df=None`
+    will still attempt to fetch intraday data live for `ticker` (single-fold convenience
+    path); pass `include_microstructure=False` for historical folds, since yfinance's
+    7-day intraday cap means older folds could never have had real microstructure data
+    "as of" their own test date anyway -- faking availability for them would be leakage
+    disguised as a feature.
+
+    `explicit_split`: pass (train_idx, val_idx, test_idx) from
+    `emafrs.experiments.walk_forward.generate_walk_forward_folds` to use those exact
+    boundaries (e.g. an EXPANDING training window) instead of this function's own
+    train_frac/val_frac proportional split -- required for walk-forward validation, where
+    the training window is not a fixed fraction of each fold's truncated data."""
     returns = compute_returns(df["close"])
 
     financial_raw = compute_all_technical_features(df)
@@ -87,9 +132,12 @@ def build_daily_dataset(
 
     regime_input = build_regime_features(returns, volume=df["volume"])
     dates_with_regime_features = regime_input.dropna().index
-    train_dates_for_regime, _, _ = _chronological_split(
-        dates_with_regime_features, train_frac, val_frac
-    )
+    if explicit_split is not None:
+        train_dates_for_regime = dates_with_regime_features.intersection(explicit_split[0])
+    else:
+        train_dates_for_regime, _, _ = _chronological_split(
+            dates_with_regime_features, train_frac, val_frac
+        )
     regime_train_features = regime_input.loc[train_dates_for_regime]
     regime_model, _ = fit_regime_hmm(
         regime_train_features, vol_column="realized_vol", n_states=n_regime_states
@@ -103,7 +151,9 @@ def build_daily_dataset(
     microstructure_columns: list[str] = []
     if include_microstructure:
         try:
-            intraday, _ = YFinanceClient().get_intraday_1m(ticker)
+            intraday = intraday_df
+            if intraday is None:
+                intraday, _ = YFinanceClient().get_intraday_1m(ticker)
             micro = build_microstructure_features(intraday, vol_window=21)
             micro_daily = micro.resample("D").last().dropna(how="all")
             micro_daily.index = micro_daily.index.normalize()
@@ -124,7 +174,12 @@ def build_daily_dataset(
     labels = build_ternary_labels(df["close"], horizon=horizon, deadzone=deadzone)
     features_final, y = drop_undefined_labels(combined, labels)
 
-    train_idx, val_idx, test_idx = _chronological_split(features_final.index, train_frac, val_frac)
+    if explicit_split is not None:
+        train_idx = features_final.index.intersection(explicit_split[0])
+        val_idx = features_final.index.intersection(explicit_split[1])
+        test_idx = features_final.index.intersection(explicit_split[2])
+    else:
+        train_idx, val_idx, test_idx = _chronological_split(features_final.index, train_frac, val_frac)
 
     return DatasetBundle(
         features=features_final,
