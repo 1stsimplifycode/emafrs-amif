@@ -84,17 +84,17 @@ pattern in every metric below). This non-reproducibility-by-construction of "sin
 trailing-window split" evaluations is itself tracked as a limitation — see
 `docs/LIMITATIONS.md`.
 
-### Regime-wise performance (most recent real run)
+### Regime-wise performance (most recent real run, using leakage-corrected causal regime probabilities -- see below)
 
 | Regime | N | Accuracy | Macro F1 | Mean fusion weight (financial) |
 |---|---:|---:|---:|---:|
-| 1 (Low) | 32 | 0.344 | 0.175 | 0.502 |
-| 2 (Medium) | 70 | 0.386 | 0.206 | 0.511 |
-| 3 (High) | 46 | 0.457 | 0.285 | 0.506 |
-| 4 (Extreme) | 12 | 0.500 | 0.235 | 0.518 |
+| 1 (Low) | 27 | 0.407 | 0.193 | 0.502 |
+| 2 (Medium) | 71 | 0.408 | 0.233 | 0.512 |
+| 3 (High) | 45 | 0.422 | 0.273 | 0.509 |
+| 4 (Extreme) | 17 | 0.471 | 0.306 | 0.518 |
 
-(An earlier run had Regime 4 excluded for n<5; this run's slightly shifted window
-happened to include 12 Regime-4 test rows, so it is reported here.) Accuracy rises mildly
+(An earlier run had Regime 4 excluded for n<5; later runs' shifted windows have included
+enough Regime-4 test rows to report it.) Accuracy rises mildly
 with regime severity but F1 stays low throughout, and — consistent with the finding
 already logged in `docs/PDF_TO_IMPLEMENTATION_TRACEABILITY.md` row #19, and now confirmed
 across two independent real runs on different date windows — the mean financial-modality
@@ -198,18 +198,89 @@ overfitting a small per-regime sample" hypothesis: if that were the whole story,
 1-parameter global fit should have clearly outperformed the 4-parameter naive fit, and it
 did not (0.040 vs. 0.038 ECE — global was marginally worse, not better).
 
-**Updated root-cause hypothesis (not yet further tested)**: the validation and test
+**Updated root-cause hypothesis at the time**: the validation and test
 windows are chronologically disjoint (val precedes test, per this project's leakage-safe
 splitting) and potentially non-stationary in volatility/regime composition — post-hoc
 temperature scaling assumes the confidence-accuracy relationship learned on validation
 transfers to test, which chronological non-stationarity in financial time series can
-violate regardless of how many temperature parameters are used. This reframes the failure
-from "a fixable overfitting bug" to "a harder distribution-shift problem inherent to
-calibrating on one chronological period and applying to a later one" — reported honestly
-as unresolved, not forced into a false "corrected" state. A rolling/walk-forward
-calibration fit (re-fitting temperature per fold rather than once) is the natural next
-step to actually test the non-stationarity hypothesis, not yet done (see "Not yet
-evaluated").
+violate regardless of how many temperature parameters are used.
+
+**Second re-evaluation, after an independently-discovered regime-probability leakage fix
+(see "Regime-probability leakage" below)**: the analysis above was run on regime
+probabilities later found to carry a real (if numerically small on this dataset) leakage
+pathway. After fixing that (switching to `RegimeModel.predict_proba_causal`, a forward-only
+filter), the calibration comparison was re-run on the corrected regime assignments — and
+the picture changed meaningfully:
+
+| Variant | Brier | ECE | Fitted temperature(s) |
+|---|---:|---:|---|
+| Uncalibrated | 0.660 | 0.031 | n/a |
+| Naive per-regime | 0.754 | **0.123** | [**0.018**, 1.024, 0.506, 0.361] |
+| Global-only (1 free parameter) | 0.666 | **0.027** | [0.694 ×4] |
+| Shrinkage per-regime (weight=2.0) | 0.667 | 0.032 | [0.667, 0.685, 0.667, 0.661] |
+
+Now **global-only genuinely beats uncalibrated** (0.027 < 0.031 ECE) for the first time
+across every run of this evaluation, while naive per-regime became dramatically *worse*
+than before (ECE 0.123, driven by a degenerate near-zero temperature of 0.018 fit for the
+smallest regime group, n=27) — this is consistent with the ORIGINAL small-sample
+overfitting hypothesis, not the non-stationarity one. **Honest caveat on attribution**: this
+re-run also used a data window one day later than the previous one (regime group sizes
+shifted: 27/71/45/17 vs. the earlier 32/70/46/12), so the change cannot be attributed to
+the regime-probability fix alone with full confidence — both a real methodological
+correction and ordinary date-window drift changed between these two runs, and they were
+not isolated from each other. What IS a clean, controlled finding (not confounded by date
+drift) is documented under "Regime-probability leakage" below.
+
+**Current best-supported conclusion**: a single global temperature is the most reliable
+calibrator observed across all runs to date; per-regime temperature freedom is harmful at
+this sample size (~15-70 rows per regime) regardless of exact regime assignment quality.
+Shrinkage at weight=2.0 sits between global and naive but has not, in any run, been the
+best-performing variant — a much heavier shrinkage weight (closer to fully global) is the
+better-supported choice going forward, not yet adopted as the default (kept as a disclosed
+open parameter rather than tuned against the test set that would evaluate it).
+
+### Regime-probability leakage (found during this audit, root-caused, fixed, re-verified)
+
+**Finding**: `RegimeModel.predict_proba` (`src/emafrs/regime/hmm_regime.py`) used
+hmmlearn's `GaussianHMM.predict_proba`, which computes SMOOTHED posteriors via the
+forward-backward algorithm over the entire sequence passed to it in one call. Since
+`dataset.py` called this once over the full train+val+test date range, every date's
+regime probability — a real model INPUT FEATURE for RAMA, and the basis of the
+regime-wise performance table above — was, in principle, influenced by observations
+*after* that date, all the way to the end of the multi-year series, despite the HMM's
+fitted parameters being correctly train-only. This is a real leakage pathway that none of
+the existing `assert_no_lookahead` checks covered, because those only ever audited
+individual technical/microstructure feature functions, never this smoothing step.
+
+**Magnitude, measured directly, not assumed**: holding the fitted HMM fixed and varying
+only how much future data was included in a `predict_proba` call (isolating the smoothing
+effect from the unrelated, confounding effect of a different train/test split changing
+which dates the model's *parameters* were fit on), the actual numerical difference on
+real SPY data was **negligible beyond 1-2 rows from the sequence boundary** (<1e-5),
+because this fitted HMM produces near-deterministic (confidently ~0/1) regime assignments
+— a single day's own volatility/entropy/Hurst signature is usually enough to pin down its
+regime with near-certainty, so conditioning on a little extra future context via smoothing
+barely moves anything. An initial, cruder measurement (varying total series length without
+controlling for this confound) showed apparent differences up to 1.0 — that number was
+**not real smoothing leakage**; it was almost entirely the separate, expected effect of a
+proportional train/val/test split producing a different absolute boundary date (and
+therefore a genuinely different fitted HMM) when the total series length changes. This
+correction to my own initial (overstated) measurement is disclosed here rather than left
+uncorrected.
+
+**Correction implemented regardless**: `RegimeModel.predict_proba_causal`
+(`src/emafrs/regime/hmm_regime.py`) implements the forward algorithm directly from the
+fitted HMM's parameters (no backward pass), giving a provably exact (not
+negligibly-approximate) leakage-safe posterior. Verified via
+`tests/unit/test_hmm_regime.py::test_predict_proba_causal_matches_smoothed_at_final_row`
+(filtering and smoothing must agree exactly at the last row of a sequence, where there is
+no future left to differ on) and
+`test_predict_proba_causal_is_truncation_invariant` (the actual leakage-safety property,
+proven directly via the same truncation methodology `assert_no_lookahead` uses elsewhere).
+`dataset.py` was switched to use this method as the default for regime probabilities used
+as a model input feature. Even though the practical impact on this particular dataset is
+small, there is no guarantee that holds for every ticker/regime configuration, so the
+exact version is used regardless of the measured-negligible impact here.
 
 ### XAI evaluation (30-sample subset of the test set; full method in `docs/XAI_EVALUATION.md`)
 
@@ -241,7 +312,11 @@ reasonably strong in both runs.
 - Full ablation grid A-K from the build brief (see `docs/ABLATION_STUDY.md` for exactly
   which rows are covered vs. not).
 - Cross-dataset / cross-market external validation.
-- Rolling/walk-forward temperature calibration (re-fit per fold) to test the
-  val/test-non-stationarity hypothesis raised above as the calibration-worsening
-  finding's updated root cause, now that per-regime-parameter-count overfitting has been
-  ruled out.
+- Adopting a heavier shrinkage weight (or a fully global temperature) as the DEFAULT
+  calibrator, now that global-only has outperformed naive per-regime and uncalibrated in
+  the corrected-regime re-run above -- not yet wired into any production/serving path,
+  only demonstrated in this evaluation script.
+- Re-running the calibration comparison on a THIRD occasion with the date window held
+  perfectly fixed (e.g. a frozen historical OHLCV snapshot) to cleanly separate the
+  regime-probability-leakage fix's effect from ordinary date-window drift, since the two
+  were confounded in the before/after comparison above.

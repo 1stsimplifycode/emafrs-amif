@@ -56,6 +56,49 @@ def test_predict_on_new_data_uses_fitted_standardization():
     assert len(predicted) == len(feats.dropna())
 
 
+def test_predict_proba_causal_matches_smoothed_at_final_row():
+    """At the LAST row of any given sequence, filtered (causal) and smoothed posteriors
+    must agree exactly -- there is no future observation left for smoothing to condition
+    on beyond what filtering already used, so the two algorithms have identical
+    information at that one point. A real equivalence check, not just a shape/type check."""
+    returns = _synthetic_two_regime_returns()
+    feats = build_regime_features(returns, vol_window=21, entropy_window=21, hurst_window=63)[["realized_vol", "entropy"]]
+    model, _ = fit_regime_hmm(feats, vol_column="realized_vol", n_states=2, random_state=0)
+
+    smoothed = model.predict_proba(feats)
+    causal = model.predict_proba_causal(feats)
+    last_idx = smoothed.index[-1]
+    np.testing.assert_allclose(
+        smoothed.loc[last_idx].to_numpy(), causal.loc[last_idx].to_numpy(), atol=1e-8
+    )
+
+
+def test_predict_proba_causal_is_truncation_invariant():
+    """The core leakage-safety property, proven directly via the same truncation
+    methodology `assert_no_lookahead` uses elsewhere in this codebase: a date's CAUSAL
+    regime probability must be identical whether or not future rows are appended to the
+    input, since it must never depend on them. hmmlearn's own (smoothed) `predict_proba`
+    does NOT have this property in general -- this is exactly the leakage pathway
+    diagnosed in docs/DATA_LEAKAGE_AUDIT.md, distinct from and not caught by any
+    per-feature no-lookahead check, since it lives in how the already-fit HMM is APPLIED,
+    not in how its input features are computed."""
+    returns = _synthetic_two_regime_returns(n_per_block=150, n_blocks=8)
+    feats = build_regime_features(returns, vol_window=21, entropy_window=21, hurst_window=63)[["realized_vol", "entropy"]]
+    clean = feats.dropna()
+
+    fit_window = clean.iloc[:400]
+    model, _ = fit_regime_hmm(fit_window, vol_column="realized_vol", n_states=2, random_state=0)
+
+    full_causal = model.predict_proba_causal(clean)
+    truncated_causal = model.predict_proba_causal(clean.iloc[:700])
+
+    common = full_causal.index.intersection(truncated_causal.index)
+    safe_idx = common[common < clean.index[600]]  # margin before the truncation point
+    assert len(safe_idx) > 50
+    diff = (full_causal.loc[safe_idx] - truncated_causal.loc[safe_idx]).abs().max().max()
+    assert diff < 1e-10
+
+
 def test_fit_raises_on_insufficient_data():
     tiny = pd.DataFrame({"realized_vol": [0.1] * 10, "entropy": [1.0] * 10})
     with pytest.raises(ValueError):

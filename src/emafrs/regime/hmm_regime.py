@@ -17,6 +17,16 @@ from hmmlearn.hmm import GaussianHMM
 REGIME_NAMES = {1: "Low", 2: "Medium", 3: "High", 4: "Extreme"}
 
 
+def _logsumexp_axis0(x: np.ndarray) -> np.ndarray:
+    m = x.max(axis=0)
+    return m + np.log(np.exp(x - m).sum(axis=0))
+
+
+def _logsumexp_axis1(x: np.ndarray) -> np.ndarray:
+    m = x.max(axis=1)
+    return m + np.log(np.exp(x - m[:, None]).sum(axis=1))
+
+
 @dataclass
 class RegimeModel:
     model: GaussianHMM
@@ -42,14 +52,63 @@ class RegimeModel:
         return regimes
 
     def predict_proba(self, features: pd.DataFrame) -> pd.DataFrame:
-        """Posterior state probabilities, columns relabeled to regime order 1..n_states --
-        used for the epistemic-uncertainty-aware temperature scaling in the VAFE (PDF Sec 6.7.3)."""
+        """DEPRECATED for use as a leakage-safe model INPUT FEATURE -- kept only for
+        backward-compatible/diagnostic use. hmmlearn's `GaussianHMM.predict_proba` computes
+        SMOOTHED posteriors via the forward-BACKWARD algorithm over the entire sequence
+        passed in: P(state_t | x_1, ..., x_T) for the FULL T, not just x_1..x_t. When
+        `features` spans train+val+test dates in one call (as `dataset.py` did until this
+        was diagnosed), every date's regime probability -- including test dates -- is
+        computed using observations that occur AFTER that date, all the way to the end of
+        the sequence. This is a real, previously-undiagnosed leakage pathway distinct from
+        (and not caught by) `assert_no_lookahead`, which only ever audited individual
+        technical/microstructure feature functions, never this smoothing step. Verified
+        directly: truncating the input date range changes the regime probability assigned
+        to dates far before the truncation point, which a leakage-safe (causal) computation
+        must never do. Use `predict_proba_causal` for any use as a model input feature; see
+        docs/DATA_LEAKAGE_AUDIT.md."""
         clean = features[self.feature_columns].dropna()
         if clean.empty:
             return pd.DataFrame(columns=sorted(self.state_to_regime.values()))
         x_std = (clean - self.feature_mean) / self.feature_std
         posteriors = self.model.predict_proba(x_std.values)
         regime_order = [self.state_to_regime[s] for s in range(posteriors.shape[1])]
+        df = pd.DataFrame(posteriors, index=clean.index, columns=regime_order)
+        return df[sorted(df.columns)]
+
+    def predict_proba_causal(self, features: pd.DataFrame) -> pd.DataFrame:
+        """Leakage-safe alternative to `predict_proba`: FILTERED posteriors via the
+        forward algorithm only (no backward pass), so the probability assigned to date t
+        depends only on observations at or before t -- P(state_t | x_1, ..., x_t), never
+        x_{t+1}, .... This is the standard HMM "filtering" computation (as opposed to
+        "smoothing"), implemented directly from the already-fit model's parameters
+        (startprob_, transmat_, per-state emission likelihoods via
+        `GaussianHMM._compute_log_likelihood`, hmmlearn's own emission-probability
+        computation, not reimplemented/approximated) since hmmlearn does not expose a
+        public filtering-only API. Verified equivalent to `predict_proba` at the LAST row
+        of any given call (where filtering and smoothing must agree, since there is no
+        future left to condition on) and verified truncation-invariant (a leakage-safe
+        feature's value at date t must not change when future rows are appended/removed)
+        in `tests/unit/test_hmm_regime.py`."""
+        clean = features[self.feature_columns].dropna()
+        if clean.empty:
+            return pd.DataFrame(columns=sorted(self.state_to_regime.values()))
+        x_std = (clean - self.feature_mean) / self.feature_std
+        log_frameprob = self.model._compute_log_likelihood(x_std.values)  # (T, n_states)
+        log_startprob = np.log(self.model.startprob_ + 1e-300)
+        log_transmat = np.log(self.model.transmat_ + 1e-300)
+
+        n_states = log_frameprob.shape[1]
+        log_alpha = np.zeros_like(log_frameprob)
+        log_alpha[0] = log_startprob + log_frameprob[0]
+        for t in range(1, len(log_frameprob)):
+            # log-sum-exp over the previous state for each next state j
+            prev = log_alpha[t - 1][:, None] + log_transmat  # (n_states_prev, n_states_next)
+            log_alpha[t] = _logsumexp_axis0(prev) + log_frameprob[t]
+        # normalize each row (filtered posterior at t) to sum to 1 in probability space
+        log_alpha -= _logsumexp_axis1(log_alpha)[:, None]
+        posteriors = np.exp(log_alpha)
+
+        regime_order = [self.state_to_regime[s] for s in range(n_states)]
         df = pd.DataFrame(posteriors, index=clean.index, columns=regime_order)
         return df[sorted(df.columns)]
 

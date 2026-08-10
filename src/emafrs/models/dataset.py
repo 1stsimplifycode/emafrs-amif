@@ -2,10 +2,20 @@
 
 Design decisions (each disclosed rather than silently made):
 
-1. Regime HMM is fit ONLY on the training split, then applied (`.predict_proba`) forward
-   across train+val+test. Fitting on the full series (including test dates) would leak
-   future volatility-distribution information into regime labels used at test time --
+1. Regime HMM is fit ONLY on the training split, then applied (`.predict_proba_causal`)
+   forward across train+val+test. Fitting on the full series (including test dates) would
+   leak future volatility-distribution information into regime labels used at test time --
    the single most common real-world leakage bug in regime-conditioned models.
+   `predict_proba_causal` (not hmmlearn's own smoothed `predict_proba`, used until this was
+   diagnosed -- see docs/DATA_LEAKAGE_AUDIT.md) additionally ensures the regime PROBABILITY
+   assigned to date t depends only on observations at or before t: hmmlearn's own
+   `predict_proba` smooths via the forward-BACKWARD algorithm over the whole sequence it is
+   given, so a date's regime probability would otherwise depend on later dates too, even
+   though the HMM's fitted parameters never do. Measured to be a numerically tiny effect on
+   this real dataset's fitted model (near-deterministic regime assignments make smoothing
+   and filtering nearly identical beyond ~1-2 rows) but is not exact, and there is no
+   guarantee that holds for every ticker/regime-detection configuration -- so the
+   provably-exact causal version is used regardless.
 
 2. Technical/risk features use ROLLING (not global) z-scoring (features/preprocessing.py),
    which is causal by construction and needs no separate train-only fit step.
@@ -153,7 +163,7 @@ def build_daily_dataset_from_ohlcv(
     regime_model, _ = fit_regime_hmm(
         regime_train_features, vol_column="realized_vol", n_states=n_regime_states
     )
-    regime_probs = regime_model.predict_proba(regime_input)
+    regime_probs = regime_model.predict_proba_causal(regime_input)
     regime_probs.columns = [f"regime_p{c}" for c in regime_probs.columns]
     regime_columns = list(regime_probs.columns)
 
