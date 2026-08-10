@@ -53,13 +53,14 @@ def get_ohlcv(ticker: str, period: str = "6mo", interval: str = "1d") -> dict:
 
 
 def get_alphavantage_daily(ticker: str) -> dict:
-    """Daily adjusted OHLCV from Alpha Vantage, used as a validation source against yfinance."""
+    """Daily OHLCV from Alpha Vantage (not dividend-adjusted -- TIME_SERIES_DAILY_ADJUSTED
+    is premium-only on the current free tier), used as a validation source against yfinance."""
     if not CONFIG.is_configured("alphavantage"):
         return {"ok": False, "error": "ALPHAVANTAGE_API_KEY not configured"}
     try:
         from emafrs.data.alphavantage_client import AlphaVantageClient
 
-        df, record = AlphaVantageClient().get_daily_adjusted(ticker)
+        df, record = AlphaVantageClient().get_daily(ticker)
         return {"ok": True, "rows": _df_to_records(df), "meta": _record_meta(record)}
     except Exception as exc:
         return _err(exc)

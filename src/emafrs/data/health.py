@@ -39,7 +39,7 @@ def _probe_alphavantage() -> SourceHealth:
     try:
         from emafrs.data.alphavantage_client import AlphaVantageClient
 
-        _, record = AlphaVantageClient().get_daily_adjusted(_PROBE_TICKER, outputsize="compact")
+        _, record = AlphaVantageClient().get_daily(_PROBE_TICKER, outputsize="compact")
         h.reachable = True
         h.last_success_at = record.fetched_at
     except Exception as exc:

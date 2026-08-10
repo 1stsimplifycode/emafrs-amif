@@ -6,6 +6,13 @@ Section 10: "Do not blindly merge conflicting sources. Implement source provenan
 
 Free tier (as published at alphavantage.co/premium as of this writing; verify current
 limits before relying on them): 25 requests/day, 5 requests/minute.
+
+REAL COMPATIBILITY ISSUE FOUND DURING USE (not hypothetical): `TIME_SERIES_DAILY_ADJUSTED`
+now returns "This is a premium endpoint" on the free tier -- Alpha Vantage moved it behind
+a paywall at some point after this client was first written. `get_daily()` below uses the
+still-free `TIME_SERIES_DAILY` endpoint instead, which does NOT include a dividend-adjusted
+close column. Documented here and in docs/DATA_SOURCES_AND_APIS.md rather than silently
+patched over.
 """
 from __future__ import annotations
 
@@ -32,15 +39,17 @@ class AlphaVantageClient(BaseAPIClient):
             raise RuntimeError("ALPHAVANTAGE_API_KEY not configured")
         self.api_key = CONFIG.alphavantage_api_key
 
-    def get_daily_adjusted(self, ticker: str, outputsize: str = "compact") -> tuple[pd.DataFrame, SourceRecord]:
+    def get_daily(self, ticker: str, outputsize: str = "compact") -> tuple[pd.DataFrame, SourceRecord]:
+        """Daily OHLCV, NOT dividend/split-adjusted (TIME_SERIES_DAILY_ADJUSTED is a
+        premium-only endpoint on the current free tier -- see module docstring)."""
         params = {
-            "function": "TIME_SERIES_DAILY_ADJUSTED",
+            "function": "TIME_SERIES_DAILY",
             "symbol": ticker,
             "outputsize": outputsize,
             "apikey": self.api_key,
         }
         payload, fetched_at, cache_hit = self.cached_get_json(
-            "daily_adjusted", _BASE_URL, params=params, ttl_seconds=6 * 3600
+            "daily", _BASE_URL, params=params, ttl_seconds=6 * 3600
         )
         series = payload.get("Time Series (Daily)")
         if not series:
@@ -50,7 +59,7 @@ class AlphaVantageClient(BaseAPIClient):
         df = pd.DataFrame.from_dict(series, orient="index")
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
-        df.columns = ["open", "high", "low", "close", "adjusted_close", "volume", "dividend", "split_coeff"]
+        df.columns = ["open", "high", "low", "close", "volume"]
         df = df.astype(float)
 
         record = self.make_record(

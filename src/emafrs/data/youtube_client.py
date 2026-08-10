@@ -87,11 +87,18 @@ class YouTubeClient:
 
     def get_transcript_text(self, video_id: str) -> tuple[str | None, SourceRecord]:
         """Returns (transcript_text_or_None, provenance_record). None means no transcript
-        is available -- callers must skip the video rather than fabricate text."""
+        is available -- callers must skip the video rather than fabricate text.
+
+        REAL COMPATIBILITY ISSUE FOUND DURING USE: the installed youtube_transcript_api
+        version removed the old classmethod `YouTubeTranscriptApi.get_transcript(video_id)`
+        in favor of an instance method `YouTubeTranscriptApi().fetch(video_id)` returning a
+        `FetchedTranscript` (iterable of snippets with a `.text` attribute, not dicts).
+        Fixed here rather than pinning an old library version, since the new API is the
+        one that will keep working going forward."""
         fetched_at = datetime.now(timezone.utc)
         try:
-            segments = YouTubeTranscriptApi.get_transcript(video_id)
-            text = " ".join(seg["text"] for seg in segments)
+            fetched = YouTubeTranscriptApi().fetch(video_id)
+            text = " ".join(snippet.text for snippet in fetched)
         except (TranscriptsDisabled, NoTranscriptFound):
             text = None
         except Exception as exc:  # transcript API raises several other narrow exceptions
