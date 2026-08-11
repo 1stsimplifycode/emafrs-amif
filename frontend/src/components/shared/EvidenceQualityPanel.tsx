@@ -6,14 +6,20 @@ import "./EvidenceQualityPanel.css";
 interface Props {
   confidence: number;
   modalityWeights: Record<string, number>;
+  signalConsistency: number | null;
 }
 
 // Central EMAFRS product idea: prediction confidence is NOT the same thing as "how much
 // should you trust this." This panel deliberately keeps four distinct questions visually
-// separate rather than folding them into one score. Each answer is either a real number
-// derived from the actual API response, or an explicit "not currently available" -- never
-// a fabricated consistency/trust score.
-export function EvidenceQualityPanel({ confidence, modalityWeights }: Props) {
+// separate rather than folding them into one score. Confidence and availability are
+// always real per-prediction API values. Consistency is now ALSO a real, live-computed
+// number (src/emafrs/risk/cross_modal_conflict.py, derived from this specific
+// prediction's own Integrated Gradients attributions -- see training_pipeline.py) when
+// two or more modalities actually contributed evidence; when only one did, it is
+// mathematically undefined (nothing to compare), stated as such, never a fabricated
+// score and never a blanket "not computed" claim that ignores what this prediction
+// actually has.
+export function EvidenceQualityPanel({ confidence, modalityWeights, signalConsistency }: Props) {
   const present = Object.keys(modalityWeights);
   const missing = ALL_KNOWN_MODALITIES.filter((m) => !present.includes(m));
 
@@ -56,13 +62,37 @@ export function EvidenceQualityPanel({ confidence, modalityWeights }: Props) {
       <div className="eq-row">
         <div className="eq-label-group">
           <span className="eq-title">Evidence consistency</span>
-          <span className="eq-help">Whether the available evidence sources agree or conflict.</span>
+          <span className="eq-help">Whether the available evidence sources agree or conflict, for THIS prediction.</span>
         </div>
-        <div className="eq-unavailable">
-          Not currently computed for live predictions — cross-modal consistency checking
-          is implemented and tested in the research codebase but has not yet been wired
-          into this endpoint. See <Link to="/research/explainability">Research → Explainability</Link>.
-        </div>
+        {signalConsistency !== null ? (
+          <div className="eq-consistency">
+            <span
+              className={
+                signalConsistency > 0
+                  ? "pill pill-bullish"
+                  : signalConsistency < 0
+                    ? "pill pill-bearish"
+                    : "pill pill-neutral"
+              }
+            >
+              {signalConsistency > 0 ? "Agree" : signalConsistency < 0 ? "Conflict" : "Ambiguous"}
+            </span>
+            <span className="numeric eq-consistency-value">{signalConsistency.toFixed(2)}</span>
+            <span className="text-faint eq-consistency-caption">
+              Computed live from this prediction's own attributions across its{" "}
+              {present.length} evidence sources (+1 = full agreement, −1 = full conflict). Not a
+              causal claim about the market — see{" "}
+              <Link to="/research/explainability">Research → Explainability</Link>.
+            </span>
+          </div>
+        ) : (
+          <div className="eq-unavailable">
+            Not computable for this prediction — only {present.length} evidence source
+            {present.length === 1 ? "" : "s"} contributed, and consistency requires at least two
+            to compare against each other. See{" "}
+            <Link to="/research/explainability">Research → Explainability</Link>.
+          </div>
+        )}
       </div>
 
       {missing.length > 0 && (

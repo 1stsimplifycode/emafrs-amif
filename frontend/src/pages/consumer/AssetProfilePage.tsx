@@ -142,7 +142,11 @@ export function AssetProfilePage() {
           <section className="panel-section-tight">
             <h2 className="display-md">Evidence quality</h2>
             <div className="card">
-              <EvidenceQualityPanel confidence={prediction.confidence} modalityWeights={prediction.modality_weights} />
+              <EvidenceQualityPanel
+                confidence={prediction.confidence}
+                modalityWeights={prediction.modality_weights}
+                signalConsistency={prediction.signal_consistency}
+              />
             </div>
           </section>
 

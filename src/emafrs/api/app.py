@@ -90,6 +90,7 @@ def _to_prediction_response(record: PredictionRecord) -> PredictionResponse:
         confidence=record.confidence, regime=record.regime, regime_name=record.regime_name,
         modality_weights=record.modality_weights_json, top_attributions=record.top_attributions_json,
         counterfactual=cf, manipulation_risk=record.manipulation_risk,
+        signal_consistency=record.signal_consistency,
         explanation_text=record.explanation_text, model_version_id=record.model_version_id,
         created_at=record.created_at,
     )

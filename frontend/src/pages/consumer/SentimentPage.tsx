@@ -1,11 +1,25 @@
 import { Link } from "react-router-dom";
+import { useMultiTickerPredictions } from "../../lib/useMultiTickerPredictions";
+import { useWatchlist } from "../../lib/watchlist";
 import "./SentimentPage.css";
 
 // Deliberately careful naming throughout this page: "Market Sentiment" / "News
 // Sentiment" / "Affective Context," never "emotion recognition" -- and no fabricated
 // V-A-D or correlation numbers. What's real is presented as real; what isn't validated
-// or wired into live predictions is stated plainly, not implied.
+// or wired into live predictions is checked LIVE against your actual tracked tickers'
+// real predictions, not asserted as a static, unconditional claim.
 export function SentimentPage() {
+  const { tickers } = useWatchlist();
+  const predictions = useMultiTickerPredictions(tickers);
+
+  const readyStates = tickers
+    .map((t) => predictions[t])
+    .filter((s): s is Extract<NonNullable<typeof s>, { status: "ready" }> => s?.status === "ready");
+
+  const anyChecked = readyStates.length > 0;
+  const anyWithText = readyStates.some((s) => "text" in s.prediction.modality_weights);
+  const stillLoading = tickers.some((t) => predictions[t]?.status === "loading");
+
   return (
     <div className="sentiment-page">
       <div className="panel-section">
@@ -69,17 +83,43 @@ export function SentimentPage() {
       <section className="panel-section">
         <div className="section-head">
           <h2 className="display-md">Is this in your live predictions?</h2>
+          <p className="text-faint">
+            Checked live, right now, against your {tickers.length} tracked ticker
+            {tickers.length === 1 ? "" : "s"} — not a static claim.
+          </p>
         </div>
         <div className="card sentiment-card sentiment-status-card">
-          <p>
-            <strong>Not currently.</strong> Every real attempt to feed live news/text data
-            into a trained prediction has run into the same wall: not enough real,
-            time-aligned text data has accumulated yet for the model to learn from it
-            reliably. That's a real, measured data-volume limitation — not a broken
-            pipeline, and not evidence that sentiment "doesn't help." The full technical
-            account, including two real pilot runs and a fix that resolved part of the
-            problem, is in <Link to="/research/affective">Research → Affective Computing</Link>.
-          </p>
+          {!anyChecked && stillLoading && <p className="text-faint">Checking your tracked tickers' real predictions…</p>}
+
+          {!anyChecked && !stillLoading && (
+            <p>
+              <strong>Not yet checked.</strong> None of your tracked tickers have a
+              computed prediction yet — open one from your{" "}
+              <Link to="/">Overview</Link> and compute it to see live whether text
+              evidence was included.
+            </p>
+          )}
+
+          {anyChecked && anyWithText && (
+            <p>
+              <strong>Yes</strong> — at least one of your currently loaded predictions
+              includes real text/affective evidence right now.
+            </p>
+          )}
+
+          {anyChecked && !anyWithText && (
+            <p>
+              <strong>Not currently</strong> — checked live across all{" "}
+              {readyStates.length} of your loaded predictions; none included text
+              evidence. Every real attempt to feed live news/text data into a trained
+              prediction has run into the same wall: not enough real, time-aligned text
+              data has accumulated yet for the model to learn from it reliably. That's a
+              real, measured data-volume limitation — not a broken pipeline, and not
+              evidence that sentiment "doesn't help." The full technical account,
+              including two real pilot runs and a fix that resolved part of the problem,
+              is in <Link to="/research/affective">Research → Affective Computing</Link>.
+            </p>
+          )}
         </div>
       </section>
     </div>

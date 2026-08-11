@@ -152,16 +152,46 @@ export function AIIntelligencePage() {
               <h2 className="display-md">Signal consistency</h2>
             </div>
             <div className="card mm-consistency-card">
-              <p>
-                Not currently computed for live predictions. EMAFRS's cross-modal
-                conflict-detection engine (comparing whether financial, market-behavior,
-                and news evidence point the same direction) is implemented and unit-tested
-                in the research codebase, but has never been evaluated against real
-                simultaneous multimodal signals — see{" "}
-                <Link to="/research/explainability">Research → Explainability</Link> for the
-                exact status. Showing a consistency score here without that would be a
-                number this system cannot yet back up.
-              </p>
+              {prediction.signal_consistency !== null ? (
+                <>
+                  <div className="mm-consistency-real">
+                    <span
+                      className={
+                        prediction.signal_consistency > 0
+                          ? "pill pill-bullish"
+                          : prediction.signal_consistency < 0
+                            ? "pill pill-bearish"
+                            : "pill pill-neutral"
+                      }
+                    >
+                      {prediction.signal_consistency > 0
+                        ? "Modalities agree"
+                        : prediction.signal_consistency < 0
+                          ? "Modalities conflict"
+                          : "Ambiguous"}
+                    </span>
+                    <span className="numeric mm-consistency-value">{prediction.signal_consistency.toFixed(2)}</span>
+                  </div>
+                  <p>
+                    Computed live for this specific prediction, from its own Integrated
+                    Gradients attributions across every modality that contributed
+                    evidence (financial vs. market-behavior) — +1 means they fully agree,
+                    −1 means they fully conflict. This describes model-attributed
+                    evidence, not a causal claim about the market — see{" "}
+                    <Link to="/research/explainability">Research → Explainability</Link>.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Not computable for this specific prediction — only one evidence source
+                  ({Object.keys(prediction.modality_weights)[0] ?? "financial"})
+                  contributed, and consistency requires at least two to compare against
+                  each other. This is a real, per-prediction fact (checked against{" "}
+                  {focus}'s actual live data), not a blanket system limitation — see{" "}
+                  <Link to="/research/explainability">Research → Explainability</Link> for
+                  when EMAFRS does and doesn't have enough modalities to compute this.
+                </p>
+              )}
             </div>
           </section>
 

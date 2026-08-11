@@ -30,6 +30,7 @@ const REAL_SAMPLE_PREDICTION: PredictionResponse = {
     counterfactual_value: -3.571260690689087,
   },
   manipulation_risk: null,
+  signal_consistency: 0.0,
   explanation_text:
     "Predicted market direction: bearish (model confidence 39%). Current market regime: High. " +
     "Modality contribution to this prediction: financial 51%, microstructure 49%. " +

@@ -48,6 +48,7 @@ class PredictionResponse(BaseModel):
     top_attributions: dict[str, float]
     counterfactual: CounterfactualResponse | None
     manipulation_risk: float | None
+    signal_consistency: float | None
     explanation_text: str
     model_version_id: int | None
     created_at: datetime

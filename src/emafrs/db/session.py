@@ -42,12 +42,25 @@ def configure_database(database_url: str) -> None:
 
 
 def init_db() -> None:
+    from sqlalchemy import inspect, text
+
     from emafrs.db.models import Base
 
     if DATABASE_URL.startswith("sqlite"):
         db_path = DATABASE_URL.replace("sqlite:///", "")
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+
+    # `create_all` only creates missing TABLES, never alters existing ones -- this project
+    # has no formal migration tool, so new nullable columns added to an existing table
+    # (e.g. signal_consistency) are added here explicitly, idempotently, rather than
+    # silently missing from any database file created before that column existed.
+    inspector = inspect(engine)
+    if "predictions" in inspector.get_table_names():
+        existing_columns = {c["name"] for c in inspector.get_columns("predictions")}
+        if "signal_consistency" not in existing_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE predictions ADD COLUMN signal_consistency FLOAT"))
 
 
 def get_session() -> Session:

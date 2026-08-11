@@ -38,6 +38,7 @@ class PredictionRecord(Base):
     top_attributions_json: Mapped[dict] = mapped_column(JSON)
     counterfactual_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     manipulation_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signal_consistency: Mapped[float | None] = mapped_column(Float, nullable=True)  # real cross-modal agreement, in [-1, 1]; None when <2 modalities contributed evidence (undefined, not "unavailable")
     explanation_text: Mapped[str] = mapped_column(String)
     model_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

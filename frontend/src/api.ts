@@ -37,6 +37,7 @@ export interface PredictionResponse {
   top_attributions: Record<string, number>;
   counterfactual: CounterfactualResponse | null;
   manipulation_risk: number | null;
+  signal_consistency: number | null;
   explanation_text: string;
   model_version_id: number | null;
   created_at: string;

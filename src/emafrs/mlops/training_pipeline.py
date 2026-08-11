@@ -18,6 +18,7 @@ from emafrs.mlops.model_registry import save_model
 from emafrs.models.dataset import build_daily_dataset
 from emafrs.models.train import train_fusion_model
 from emafrs.regime.hmm_regime import REGIME_NAMES
+from emafrs.risk.cross_modal_conflict import compute_agreement, modality_direction_from_attributions
 from emafrs.xai.counterfactual import search_all_feature_counterfactuals
 from emafrs.xai.integrated_gradients import compute_integrated_gradients
 from emafrs.xai.nlg import generate_explanation
@@ -76,6 +77,16 @@ def run_training_and_prediction_pipeline(
     financial_attrs = list(zip(bundle.financial_columns, attrs["financial"][0]))
     top_financial = sorted(financial_attrs, key=lambda kv: -abs(kv[1]))[:5]
 
+    # REAL cross-modal signal consistency, computed for every live prediction where more
+    # than one modality actually contributed evidence -- derived from the same IG
+    # attributions already computed above (nothing new invented), fed into the existing,
+    # separately-tested compute_agreement(). Left as None (never a fabricated number)
+    # when only one modality is present, since "agreement" between one thing and nothing
+    # is undefined, not "unavailable due to missing computation."
+    modality_attrs = {name: attrs[name] for name in modality_cols}
+    modality_directions = modality_direction_from_attributions(modality_attrs)
+    signal_consistency = compute_agreement(modality_directions).mean_agreement if len(modality_directions) >= 2 else None
+
     fixed_extra = {k: v for k, v in modality_inputs.items() if k != "financial"}
 
     def predict_fn(financial_vec):
@@ -123,6 +134,7 @@ def run_training_and_prediction_pipeline(
                 if top_cf is not None else None
             ),
             manipulation_risk=None,  # computed separately once real hype/microstructure signals are wired end-to-end live
+            signal_consistency=signal_consistency,
             explanation_text=explanation,
             model_version_id=version.id,
         )

@@ -23,6 +23,26 @@ class ConflictReport:
     is_conflicted: bool
 
 
+def modality_direction_from_attributions(attributions: dict) -> dict[str, float]:
+    """Derives a REAL per-modality directional signal from Integrated Gradients
+    attributions already computed for a live prediction (see
+    emafrs.xai.integrated_gradients.compute_integrated_gradients) -- the sum of that
+    modality's attribution values toward the model's predicted class, squashed to
+    [-1, 1] via tanh (attribution sums are unbounded; tanh gives a bounded, comparable
+    "direction strength" without inventing a probability). Positive = this modality's
+    evidence net pushed toward the predicted class; negative = net pushed away.
+
+    This is model-attributed evidence, not a claim about true market direction (same
+    anti-overclaiming rule as every other attribution in this project) -- but unlike a
+    fabricated placeholder, it is computed from real numbers already produced by the
+    live inference pipeline for this specific prediction, not asserted.
+
+    `attributions`: a dict of modality name -> attribution array, exactly the dict
+    `compute_integrated_gradients` returns (after removing the "regime" entry, which is
+    not a modality)."""
+    return {name: float(np.tanh(np.sum(arr))) for name, arr in attributions.items()}
+
+
 def compute_agreement(
     modality_directions: dict[str, float], conflict_threshold: float = 0.0, neutral_band: float = 0.05
 ) -> ConflictReport:

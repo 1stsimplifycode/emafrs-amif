@@ -104,6 +104,30 @@ def test_get_latest_prediction_returns_persisted_record():
     assert body["direction_label"] == "bullish"
     assert body["modality_weights"] == {"financial": 0.6, "microstructure": 0.4}
     assert body["counterfactual"]["feature_name"] == "rsi_14"
+    assert body["signal_consistency"] is None  # not set on this record -- never defaulted to a fabricated number
+
+
+def test_get_latest_prediction_surfaces_real_signal_consistency_when_computed():
+    session = get_session()
+    try:
+        record = PredictionRecord(
+            ticker="CONSISTTEST", as_of_date="2026-01-01", direction=1, confidence=0.7,
+            regime=1, regime_name="Low",
+            modality_weights_json={"financial": 0.5, "microstructure": 0.5},
+            top_attributions_json={"rsi_14": 0.1},
+            counterfactual_json=None,
+            manipulation_risk=None, signal_consistency=0.42,
+            explanation_text="Predicted market direction: bullish.",
+            model_version_id=None,
+        )
+        session.add(record)
+        session.commit()
+    finally:
+        session.close()
+
+    resp = client.get("/api/v1/predictions/CONSISTTEST/latest")
+    assert resp.status_code == 200
+    assert resp.json()["signal_consistency"] == 0.42
 
 
 def test_rate_limit_headers_do_not_break_normal_traffic():

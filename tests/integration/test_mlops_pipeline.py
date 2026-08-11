@@ -82,6 +82,15 @@ def test_full_training_and_prediction_pipeline_real_data():
     assert isinstance(record.modality_weights_json, dict) and len(record.modality_weights_json) > 0
     assert abs(sum(record.modality_weights_json.values()) - 1.0) < 1e-3
     assert isinstance(record.top_attributions_json, dict) and len(record.top_attributions_json) == 5
+    # signal_consistency: a REAL computed value (in [-1, 1]) when >=2 modalities actually
+    # contributed evidence to this real prediction, else honestly None (undefined for a
+    # single modality, never a fabricated placeholder) -- checked against whichever case
+    # this real run actually landed in, not assumed.
+    if len(record.modality_weights_json) >= 2:
+        assert record.signal_consistency is not None
+        assert -1.0 <= record.signal_consistency <= 1.0
+    else:
+        assert record.signal_consistency is None
     assert record.explanation_text  # non-empty
     if record.counterfactual_json is not None:
         assert "causal claim" in record.explanation_text  # anti-overclaiming wording enforced by nlg.py
