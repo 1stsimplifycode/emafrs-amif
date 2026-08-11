@@ -126,7 +126,7 @@ export function AIIntelligencePage() {
                         </span>
                       </div>
                       <p className="text-muted mm-note-desc">{meta.description}</p>
-                      {m === "text" && (
+                      {m === "text" && !present && (
                         <p className="text-faint mm-note-caveat">
                           Real-time text/affective evidence is not currently included in
                           live predictions — accumulated real data volume has been
