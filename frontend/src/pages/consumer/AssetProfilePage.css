@@ -1,0 +1,95 @@
+.asset-page-head {
+  margin-bottom: var(--space-6);
+}
+
+.asset-empty-card {
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.asset-outlook-row {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-7);
+}
+
+.asset-outlook-card,
+.asset-constellation-card {
+  padding: var(--space-5);
+}
+
+.asset-outlook-value {
+  margin: var(--space-3) 0;
+}
+
+.asset-confidence-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: var(--space-3);
+}
+
+.asset-confidence-value {
+  font-size: 1.6rem;
+  font-weight: 750;
+  font-family: var(--font-display);
+}
+
+.asset-meta-row {
+  margin-top: var(--space-2);
+  font-size: 0.82rem;
+}
+
+.panel-section-tight {
+  margin-bottom: var(--space-6);
+}
+
+.panel-section-tight h2 {
+  margin-bottom: var(--space-3);
+}
+
+.asset-why-card,
+.asset-counterfactual-card {
+  padding: var(--space-5);
+}
+
+.asset-explanation-text {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin: 0 0 var(--space-4);
+}
+
+.asset-counterfactual-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.asset-attribution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.asset-attribution-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.83rem;
+}
+
+.asset-evidence-link {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .asset-outlook-row {
+    grid-template-columns: 1fr;
+  }
+}

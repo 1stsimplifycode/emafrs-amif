@@ -7,9 +7,9 @@ interface Props {
 }
 
 const DIRECTION_COLORS: Record<string, string> = {
-  bullish: "#16a34a",
-  bearish: "#dc2626",
-  neutral: "#6b7280",
+  bullish: "var(--bullish)",
+  bearish: "var(--bearish)",
+  neutral: "var(--neutral)",
 };
 
 export function PredictionCard({ prediction: p }: Props) {

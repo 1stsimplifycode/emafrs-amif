@@ -1,0 +1,173 @@
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--canvas) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shell-topbar-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+/* Original EMAFRS glyph: a signal node with an evidence ring around it -- not a stock
+   ticker/candlestick icon, deliberately. */
+.brand-glyph {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--signal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.brand-glyph::before,
+.brand-glyph::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--context) 70%, transparent);
+}
+
+.brand-glyph::before {
+  inset: -6px;
+  border-color: color-mix(in srgb, var(--signal) 35%, transparent);
+}
+
+.brand-glyph::after {
+  inset: -11px;
+  border-color: color-mix(in srgb, var(--caution) 25%, transparent);
+}
+
+.brand-glyph-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.brand-word {
+  font-family: var(--font-display);
+  font-weight: 750;
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+
+.mode-switch {
+  display: flex;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-subtle);
+}
+
+.mode-tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mode-tab-active {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.shell-search {
+  display: flex;
+  gap: var(--space-2);
+  flex: 1;
+  max-width: 420px;
+  min-width: 240px;
+}
+
+.shell-search-input {
+  flex: 1;
+}
+
+.shell-subnav {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-5) var(--space-3);
+  display: flex;
+  gap: var(--space-5);
+  overflow-x: auto;
+}
+
+.subnav-link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  padding-bottom: 8px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.subnav-link-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--signal);
+}
+
+.shell-main {
+  flex: 1;
+  max-width: var(--max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+}
+
+.shell-footer {
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-5);
+}
+
+.shell-footer p {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .shell-topbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .shell-brand {
+    justify-content: space-between;
+  }
+}

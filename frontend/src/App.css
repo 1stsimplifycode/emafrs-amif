@@ -1,22 +1,15 @@
+/* This file predates the EMAFRS "Signal Room" design system (styles/tokens.css) and is
+   kept for the components it originally styled (PredictionCard, ModalityWeights, the
+   Research Console's health/history tables) -- rather than duplicate a second palette,
+   its old variable names are aliased onto the real tokens so those components render
+   in the SAME visual identity as the rest of the product, not a disconnected old theme. */
 :root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #111827;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --panel-bg: #f9fafb;
-  --accent: #2563eb;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0f19;
-    --fg: #e5e7eb;
-    --muted: #9ca3af;
-    --border: #1f2937;
-    --panel-bg: #111827;
-    --accent: #60a5fa;
-  }
+  --bg: var(--canvas);
+  --fg: var(--text-primary);
+  --muted: var(--text-tertiary);
+  --border: var(--border-subtle);
+  --panel-bg: var(--surface);
+  --accent: var(--signal);
 }
 
 * {
@@ -47,19 +40,12 @@ body {
 }
 
 .error {
-  color: #dc2626;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--bearish);
+  background: var(--bearish-bg);
+  border: 1px solid color-mix(in srgb, var(--bearish) 35%, transparent);
   border-radius: 6px;
   padding: 10px 14px;
   margin: 12px 0;
-}
-
-@media (prefers-color-scheme: dark) {
-  .error {
-    background: #2a1216;
-    border-color: #7f1d1d;
-  }
 }
 
 .controls {
@@ -214,11 +200,11 @@ body {
 }
 
 .attr-positive {
-  color: #16a34a;
+  color: var(--bullish);
 }
 
 .attr-negative {
-  color: #dc2626;
+  color: var(--bearish);
 }
 
 .counterfactual-text,
@@ -256,33 +242,18 @@ td {
 }
 
 .badge-ok {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--bullish-bg);
+  color: var(--bullish);
 }
 
 .badge-off {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--neutral-bg);
+  color: var(--neutral);
 }
 
 .badge-error {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-@media (prefers-color-scheme: dark) {
-  .badge-ok {
-    background: #052e16;
-    color: #4ade80;
-  }
-  .badge-off {
-    background: #1f2937;
-    color: #9ca3af;
-  }
-  .badge-error {
-    background: #2a1216;
-    color: #f87171;
-  }
+  background: var(--bearish-bg);
+  color: var(--bearish);
 }
 
 .trust-panel {

@@ -1,0 +1,45 @@
+.regime-timeline-track {
+  display: flex;
+  gap: 3px;
+  height: 40px;
+  align-items: stretch;
+}
+
+.regime-timeline-cell {
+  flex: 1;
+  min-width: 4px;
+}
+
+.regime-timeline-bar {
+  height: 100%;
+  border-radius: 3px;
+  opacity: 0.9;
+}
+
+.regime-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+}
+
+.regime-timeline-legend {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.regime-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.regime-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}

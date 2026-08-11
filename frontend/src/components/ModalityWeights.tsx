@@ -7,10 +7,10 @@ interface Props {
 }
 
 const MODALITY_COLORS: Record<string, string> = {
-  financial: "#3b82f6",
-  microstructure: "#f59e0b",
-  text: "#10b981",
-  emotion: "#a855f7",
+  financial: "var(--signal)",
+  microstructure: "var(--structural)",
+  text: "var(--context)",
+  emotion: "var(--context)",
 };
 
 export function ModalityWeights({ weights }: Props) {

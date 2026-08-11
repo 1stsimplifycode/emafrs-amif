@@ -1,0 +1,38 @@
+.constellation-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3) 0;
+}
+
+.constellation-label {
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--text-secondary);
+  font-family: var(--font-body);
+}
+
+.constellation-label-absent {
+  fill: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.constellation-pct {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--canvas);
+  font-family: var(--font-mono);
+}
+
+.constellation-center-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: var(--text-tertiary);
+}
+
+.constellation-center-value {
+  font-size: 12px;
+  font-weight: 750;
+  font-family: var(--font-display);
+}

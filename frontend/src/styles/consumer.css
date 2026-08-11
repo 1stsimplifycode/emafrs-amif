@@ -1,0 +1,163 @@
+/* Shared styling for the Consumer product experience (Overview, Asset Profile, AI
+   Intelligence, Sentiment pages). Kept in one file since class names are shared across
+   those pages rather than scoped per-component. */
+
+.panel-section {
+  margin-bottom: var(--space-7);
+}
+
+.section-head {
+  margin-bottom: var(--space-4);
+}
+
+.section-head p {
+  margin: 4px 0 0;
+}
+
+/* --- Hero --- */
+
+.hero {
+  padding: var(--space-7) 0 var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-6);
+}
+
+.hero-sub {
+  max-width: 560px;
+  margin: var(--space-3) 0 var(--space-5);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.hero-search,
+.hero-search-input {
+  display: flex;
+  gap: var(--space-2);
+  max-width: 480px;
+}
+
+.hero-search-input {
+  flex: 1;
+}
+
+/* --- Market pulse --- */
+
+.pulse-summary-row {
+  display: flex;
+  gap: var(--space-7);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.pulse-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pulse-stat-value {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+/* --- Intelligence cards --- */
+
+.intelligence-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+.intelligence-card {
+  padding: var(--space-4);
+  border-left: 3px solid var(--context);
+}
+
+.intelligence-card-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.intelligence-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* --- Watchlist / asset pulse rows --- */
+
+.watchlist-card {
+  padding: var(--space-2);
+}
+
+.pulse-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: background 0.12s ease;
+}
+
+.pulse-row:hover {
+  background: var(--surface-inset);
+}
+
+.pulse-ticker {
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.pulse-skeleton {
+  height: 18px;
+  width: 100%;
+  grid-column: span 3;
+}
+
+.pulse-status {
+  grid-column: span 3;
+  font-size: 0.82rem;
+}
+
+.pulse-confidence {
+  font-weight: 700;
+}
+
+.pulse-regime {
+  font-size: 0.8rem;
+}
+
+.pulse-remove {
+  padding: 2px 8px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.watchlist-add {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.watchlist-add .input {
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .pulse-row {
+    grid-template-columns: 70px 1fr auto;
+  }
+  .pulse-regime {
+    display: none;
+  }
+}
