@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, ApiError } from "../../api";
-import type { PredictionResponse } from "../../api";
 import { EvidenceConstellation } from "../../components/shared/EvidenceConstellation";
 import { friendlyErrorMessage } from "../../lib/errors";
 import { modalityMeta, ALL_KNOWN_MODALITIES } from "../../lib/modalities";
 import { directionWord, pct } from "../../lib/format";
+import { usePrediction } from "../../lib/usePrediction";
 import { useWatchlist } from "../../lib/watchlist";
 import "./AIIntelligencePage.css";
 
@@ -22,33 +21,7 @@ const OUTLOOK_COLOR: Record<string, string> = {
 export function AIIntelligencePage() {
   const { tickers } = useWatchlist();
   const [focus, setFocus] = useState(tickers[0] ?? "SPY");
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "not-computed" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setStatus("loading");
-    api
-      .latestPrediction(focus)
-      .then((p) => {
-        if (!cancelled) {
-          setPrediction(p);
-          setStatus("ready");
-        }
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof ApiError && e.status === 404) setStatus("not-computed");
-        else {
-          setError(friendlyErrorMessage(`${focus}'s prediction`));
-          setStatus("error");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [focus]);
+  const { status, prediction, isRevalidating } = usePrediction(focus);
 
   return (
     <div className="ai-intel-page">
@@ -83,13 +56,16 @@ export function AIIntelligencePage() {
           </Link>
         </div>
       )}
-      {status === "error" && <p className="error-banner">{error}</p>}
+      {status === "error" && <p className="error-banner">{friendlyErrorMessage(`${focus}'s prediction`)}</p>}
 
       {status === "ready" && prediction && (
-        <>
+        <div key={prediction.id} className="fade-in-update">
           <section className="panel-section">
             <div className="section-head">
-              <h2 className="display-md">Current regime</h2>
+              <h2 className="display-md">
+                Current regime
+                {isRevalidating && <span className="revalidating-dot" title="Confirming with a live fetch…" />}
+              </h2>
             </div>
             <div className="card regime-hero-card">
               <span className="display-xl">{prediction.regime_name}</span>
@@ -229,7 +205,7 @@ export function AIIntelligencePage() {
               </li>
             </ul>
           </section>
-        </>
+        </div>
       )}
     </div>
   );

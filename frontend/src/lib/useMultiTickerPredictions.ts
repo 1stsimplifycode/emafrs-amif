@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api";
 import type { PredictionResponse } from "../api";
+import { getCachedPrediction, setCachedPrediction } from "./predictionCache";
 
 export type TickerPredictionState =
-  | { status: "loading" }
-  | { status: "ready"; prediction: PredictionResponse }
+  | { status: "loading"; isRevalidating?: false }
+  | { status: "ready"; prediction: PredictionResponse; isRevalidating: boolean }
   | { status: "not-computed" } // real 404 -- no prediction exists yet for this ticker, never fabricated
   | { status: "error"; message: string };
 
@@ -13,6 +14,11 @@ export type TickerPredictionState =
 // Refresh does explicitly, on user action, since it costs ~10-30s); it only reads
 // whatever has already been computed and persisted, which is why some tickers can
 // legitimately come back "not-computed" rather than a fabricated placeholder value.
+//
+// Shares the same real-response cache as usePrediction (predictionCache.ts): a ticker
+// already viewed on the Asset Profile page shows its real cached value here instantly
+// too, revalidating silently in the background -- one cache, real data, no duplicate
+// "loading" flash for something already fetched this session.
 export function useMultiTickerPredictions(tickers: string[]) {
   const [state, setState] = useState<Record<string, TickerPredictionState>>({});
 
@@ -21,7 +27,9 @@ export function useMultiTickerPredictions(tickers: string[]) {
     setState((prev) => {
       const next = { ...prev };
       for (const t of tickers) {
-        if (!next[t]) next[t] = { status: "loading" };
+        if (next[t]) continue;
+        const cached = getCachedPrediction(t);
+        next[t] = cached ? { status: "ready", prediction: cached, isRevalidating: true } : { status: "loading" };
       }
       return next;
     });
@@ -30,7 +38,9 @@ export function useMultiTickerPredictions(tickers: string[]) {
       api
         .latestPrediction(ticker)
         .then((prediction) => {
-          if (!cancelled) setState((prev) => ({ ...prev, [ticker]: { status: "ready", prediction } }));
+          if (cancelled) return;
+          setCachedPrediction(ticker, prediction);
+          setState((prev) => ({ ...prev, [ticker]: { status: "ready", prediction, isRevalidating: false } }));
         })
         .catch((e) => {
           if (cancelled) return;

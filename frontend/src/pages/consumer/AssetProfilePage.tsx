@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, ApiError } from "../../api";
+import { api } from "../../api";
 import type { PredictionResponse } from "../../api";
 import { EvidenceConstellation } from "../../components/shared/EvidenceConstellation";
 import { EvidenceQualityPanel } from "../../components/shared/EvidenceQualityPanel";
 import { RegimeTimeline } from "../../components/shared/RegimeTimeline";
+import { StagedProgressIndicator } from "../../components/shared/StagedProgressIndicator";
 import { TrustworthinessPanel } from "../../components/TrustworthinessPanel";
 import { friendlyErrorMessage } from "../../lib/errors";
 import { featureLabel } from "../../lib/featureLabels";
 import { directionPillClass, directionWord, pct, signed } from "../../lib/format";
+import { usePrediction } from "../../lib/usePrediction";
 import "./AssetProfilePage.css";
 
 const OUTLOOK_COLOR: Record<string, string> = {
@@ -19,49 +21,28 @@ const OUTLOOK_COLOR: Record<string, string> = {
 
 export function AssetProfilePage() {
   const { ticker = "" } = useParams();
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const { status, prediction, isRevalidating, refresh } = usePrediction(ticker);
   const [history, setHistory] = useState<PredictionResponse[]>([]);
-  const [status, setStatus] = useState<"loading" | "ready" | "not-computed" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setStatus("loading");
-    setPrediction(null);
-    api
-      .latestPrediction(ticker)
-      .then((p) => {
-        if (cancelled) return;
-        setPrediction(p);
-        setStatus("ready");
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof ApiError && e.status === 404) {
-          setStatus("not-computed");
-        } else {
-          setError(friendlyErrorMessage(`${ticker}'s prediction`));
-          setStatus("error");
-        }
-      });
     api.predictionHistory(ticker).then((h) => !cancelled && setHistory(h)).catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [ticker]);
+  }, [ticker, prediction?.id]);
 
   async function compute() {
     setComputing(true);
-    setError(null);
+    setComputeError(null);
     try {
-      const p = await api.refreshPrediction(ticker);
-      setPrediction(p);
-      setStatus("ready");
+      await refresh();
       const h = await api.predictionHistory(ticker).catch(() => []);
       setHistory(h);
     } catch {
-      setError(friendlyErrorMessage(`${ticker}'s outlook`));
+      setComputeError(friendlyErrorMessage(`${ticker}'s outlook`));
     } finally {
       setComputing(false);
     }
@@ -80,19 +61,23 @@ export function AssetProfilePage() {
         <div className="card asset-empty-card">
           <p>No prediction has been computed yet for {ticker}.</p>
           <button className="btn btn-primary" onClick={compute} disabled={computing}>
-            {computing ? "Training a real model (~10-30s)…" : "Compute AI outlook"}
+            {computing ? "Training a real model…" : "Compute AI outlook"}
           </button>
-          {error && <p className="error-banner" style={{ marginTop: 12 }}>{error}</p>}
+          <StagedProgressIndicator active={computing} />
+          {computeError && <p className="error-banner" style={{ marginTop: 12 }}>{computeError}</p>}
         </div>
       )}
 
-      {status === "error" && <p className="error-banner">{error}</p>}
+      {status === "error" && <p className="error-banner">{friendlyErrorMessage(`${ticker}'s prediction`)}</p>}
 
       {status === "ready" && prediction && (
-        <>
+        <div key={prediction.id} className="fade-in-update">
           <section className="asset-outlook-row">
             <div className="card asset-outlook-card">
-              <span className="eyebrow">AI outlook</span>
+              <span className="eyebrow">
+                AI outlook
+                {isRevalidating && <span className="revalidating-dot" title="Confirming with a live fetch…" />}
+              </span>
               <div className="asset-outlook-value">
                 <span className={directionPillClass(prediction.direction_label)} style={{ fontSize: "0.95rem", padding: "6px 16px" }}>
                   {directionWord(prediction.direction_label)}
@@ -108,6 +93,8 @@ export function AssetProfilePage() {
               <button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={compute} disabled={computing}>
                 {computing ? "Recomputing…" : "Recompute with latest data"}
               </button>
+              <StagedProgressIndicator active={computing} />
+              {computeError && <p className="error-banner" style={{ marginTop: 12 }}>{computeError}</p>}
             </div>
 
             <div className="card asset-constellation-card">
@@ -182,7 +169,7 @@ export function AssetProfilePage() {
               View full evidence in Research Console →
             </Link>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

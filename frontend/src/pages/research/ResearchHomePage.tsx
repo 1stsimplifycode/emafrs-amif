@@ -4,6 +4,7 @@ import { api, ApiError } from "../../api";
 import type { PredictionResponse } from "../../api";
 import { PredictionCard } from "../../components/PredictionCard";
 import { PredictionHistoryTable } from "../../components/PredictionHistoryTable";
+import { StagedProgressIndicator } from "../../components/shared/StagedProgressIndicator";
 import "../../styles/research.css";
 
 const SUBPAGES = [
@@ -85,20 +86,22 @@ export function ResearchHomePage() {
             {loading === "latest" ? "Loading..." : "Load latest"}
           </button>
           <button className="btn btn-primary" onClick={() => refresh(ticker)} disabled={loading !== null}>
-            {loading === "refresh" ? "Training (~10-30s)..." : "Train & Predict"}
+            {loading === "refresh" ? "Training..." : "Train & Predict"}
           </button>
         </div>
+
+        <StagedProgressIndicator active={loading === "refresh"} />
 
         {error && <p className="error-banner" style={{ marginTop: 12 }}>{error}</p>}
 
         {prediction && (
-          <>
+          <div key={prediction.id} className="fade-in-update">
             <PredictionCard prediction={prediction} />
             <div className="panel" style={{ marginTop: 20 }}>
               <h2 style={{ marginTop: 0 }}>Prediction history</h2>
               <PredictionHistoryTable history={history} />
             </div>
-          </>
+          </div>
         )}
       </section>
 

@@ -30,7 +30,10 @@ export function AssetPulseRow({ ticker, state, onRemove }: Props) {
             {directionWord(state.prediction.direction_label)}
           </span>
           <span className="pulse-confidence numeric">{pct(state.prediction.confidence)}</span>
-          <span className="text-faint pulse-regime">{state.prediction.regime_name} regime</span>
+          <span className="text-faint pulse-regime">
+            {state.prediction.regime_name} regime
+            {state.isRevalidating && <span className="revalidating-dot" title="Confirming with a live fetch…" />}
+          </span>
         </>
       )}
 

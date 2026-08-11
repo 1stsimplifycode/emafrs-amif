@@ -226,3 +226,57 @@ a {
     animation: none;
   }
 }
+
+/* Applied (via a `key` tied to the real data's identity, e.g. prediction id/created_at)
+   whenever a component re-renders with a NEW real value, so an update reads as a
+   deliberate refresh rather than an abrupt pop-in. Never used to animate in a value that
+   isn't real yet -- only real data already in hand. */
+.fade-in-update {
+  animation: fade-in-update 0.35s ease;
+}
+
+@keyframes fade-in-update {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-update {
+    animation: none;
+  }
+}
+
+/* A small, honest "revalidating" affordance: real cached data is fully shown (never
+   dimmed to look broken), with a tiny pulsing dot indicating a fresh real fetch is
+   confirming/updating it in the background. */
+.revalidating-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: revalidating-pulse 1.2s ease-in-out infinite;
+  margin-left: var(--space-2);
+}
+
+@keyframes revalidating-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revalidating-dot {
+    animation: none;
+  }
+}
