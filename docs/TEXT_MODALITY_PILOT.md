@@ -189,3 +189,51 @@ from noise on a constant column. Both text-modality pilots to date (YouTube-only
 test rows available; combined: 0/all rows available) have been sample-starved for
 different, now precisely diagnosed reasons. No claim about text modality's predictive
 value can be made from either.
+
+## Follow-up 2: the next-trading-day mapping fix was implemented, verified working, and still not sufficient (real run, remediation pass)
+
+Per the trustworthiness-audit remediation, the weekend-date/trading-calendar
+misalignment identified above was root-caused precisely enough to fix: NewsAPI articles
+published on a non-trading day now map FORWARD ONLY (never backward, strictly causal) to
+the next real trading day, via `aggregate_daily_text_features(records,
+trading_days=df.index)` (`src/emafrs/nlp/text_dataset.py`). Proven correct with dedicated
+unit tests (`tests/unit/test_text_dataset.py`: a never-moves-earlier property test and a
+truncation-invariance test, mirroring the methodology already used for the HMM
+regime-probability leakage fix).
+
+**Real re-run** (`python scripts/fetch_combined_text_dataset.py`, same 2-query NewsAPI
+setup, YouTube blocked again as usual — 0/10 videos got transcripts):
+
+| | Before the fix | After the fix |
+|---|---|---|
+| NewsAPI articles processed | 98 | 98 |
+| Raw daily rows (calendar-date aggregation) | 3 (Fri 08-07, Sat 08-08, Sun 08-09) | — |
+| Trading-day-mapped daily rows | — | **2** (08-07, 08-10 — the Sat+Sun articles correctly merged into the following Monday) |
+| `text_available` rows, train/val/test | 0/745, 0/160, 0/160 | **still 0/745, 0/160, 0/160** |
+
+**The fix is confirmed working exactly as designed** — 3 raw dates (2 of them
+weekend, previously silently dropped by the join) correctly collapsed into 2
+trading-day-aligned dates, with the Saturday and Sunday articles' features correctly
+mean-pooled into the Monday row (verified: `text_n_items` for 2026-08-10 is 74, i.e. the
+sum of both weekend days' article counts plus Monday's own). **This did not, however,
+change the ultimate 0-usable-rows outcome**, because a SECOND, independent bottleneck —
+already flagged as the other compounding cause in the original diagnosis — is now the
+sole binding constraint: `text_zscore_window = min(21, max(3, len(text_daily)-1))`
+evaluates to `min(21, max(3, 1)) = 3` for a 2-row `text_daily`, and the rolling z-score's
+`min_periods=window=3` (the same leakage-safe warm-up used everywhere else in this
+codebase) mathematically cannot produce a single non-NaN value from only 2 observations —
+regardless of which 2 dates they are or how correctly they were computed.
+
+**Stop condition reached, per this remediation pass's own rules**: shrinking the z-score
+minimum window specifically to accommodate a 2-row pilot was already considered and
+rejected in the original diagnosis (it would trade away this codebase's leakage-safety
+guarantees for a same-day cosmetic fix, not address the underlying sparsity). The correct
+characterization is now precise: **this is a genuine additional-data-required
+limitation, not a remaining implementation bug.** NewsAPI's ~29-day lookback cap
+fundamentally limits how many unique days a single collection run can accumulate; getting
+past the 3-day z-score warm-up requires either (a) running the collection repeatedly over
+real elapsed time (days/weeks) to accumulate 3+ genuinely distinct trading days, which
+this project's single-session pilots cannot simulate, or (b) resolving YouTube's
+IP-blocking (external, largely outside this project's control) to add a second, more
+historically-flexible source. Both are recorded as concrete next steps requiring
+additional data collection over time, not further code changes.

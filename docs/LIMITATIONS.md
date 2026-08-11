@@ -63,19 +63,26 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   accounted for (via the `text_available` mask, already handled) rather than assumed away.
 - **Text modality is technically wired end-to-end (YouTube + NewsAPI, unified schema) but
   every real run to date has been data-starved.** The YouTube-only pilot got 2 of ~160
-  test-set rows with real text signal; a follow-up combined YouTube+NewsAPI pilot got
-  **0 of any** split row (see `docs/TEXT_MODALITY_PILOT.md` for both breakdowns). The
-  combined-pilot's zero-availability result has two compounding, precisely diagnosed
-  causes: (1) NewsAPI articles published on non-trading days (weekends) never align to
-  any row in the OHLCV trading calendar and are silently dropped by the join, and (2) the
-  leakage-safe rolling z-score warm-up (`min_periods=window`) requires more prior
-  text-bearing days than a short pilot accumulates. Both 3-modality training results to
-  date are explicitly reported as uninformative about text modality value, not as
-  evidence it doesn't help. A scoped, not-yet-implemented correction for cause (1) —
-  attributing non-trading-day text to the next trading day's information set, the
-  conventional treatment for after-hours/weekend news in financial modeling — is recorded
-  in `docs/TEXT_MODALITY_PILOT.md` but was deliberately not rushed in without its own
-  review and test coverage.
+  test-set rows with real text signal; a combined YouTube+NewsAPI pilot got **0 of any**
+  split row (see `docs/TEXT_MODALITY_PILOT.md` for both breakdowns and a third,
+  remediation-pass follow-up run). The zero-availability result had two compounding,
+  precisely diagnosed causes: (1) NewsAPI articles published on non-trading days
+  (weekends) never aligned to any row in the OHLCV trading calendar and were silently
+  dropped by the join, and (2) the leakage-safe rolling z-score warm-up
+  (`min_periods=window`) requires more prior text-bearing days than a short pilot
+  accumulates. **Cause (1) has since been fixed and verified**: articles now map
+  forward-only (never backward — strictly causal) to the next real trading day
+  (`aggregate_daily_text_features(..., trading_days=...)`), confirmed on a real re-run to
+  correctly merge weekend articles into the following Monday. **The 0-usable-rows outcome
+  is unchanged**, because cause (2) alone is now sufficient to block it: NewsAPI's ~29-day
+  lookback cap limits a single collection run to only 1-2 unique trading days, and the
+  z-score warm-up (`min_periods=3`) mathematically cannot produce a non-NaN value from
+  fewer than 3 observations, regardless of how correctly those observations were
+  computed. This is now precisely characterized as a genuine additional-data-required
+  limitation (needs real elapsed time across multiple collection runs to accumulate 3+
+  distinct trading days, or resolving YouTube's IP-blocking to add a second source), not
+  a remaining implementation bug. All 3-modality training results to date are explicitly
+  reported as uninformative about text modality value, never as evidence it doesn't help.
 
 ## Data sources
 
