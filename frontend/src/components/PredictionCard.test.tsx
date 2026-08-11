@@ -86,4 +86,9 @@ describe("PredictionCard", () => {
     expect(screen.getByText("Manipulation risk")).toBeInTheDocument();
     expect(screen.getByText("0.420")).toBeInTheDocument();
   });
+
+  it("renders the trustworthiness panel alongside every prediction", () => {
+    render(<PredictionCard prediction={REAL_SAMPLE_PREDICTION} />);
+    expect(screen.getByText(/How much should I trust this\?/)).toBeInTheDocument();
+  });
 });

@@ -1,5 +1,6 @@
 import type { PredictionResponse } from "../api";
 import { ModalityWeights } from "./ModalityWeights";
+import { TrustworthinessPanel } from "./TrustworthinessPanel";
 
 interface Props {
   prediction: PredictionResponse;
@@ -85,6 +86,8 @@ export function PredictionCard({ prediction: p }: Props) {
         <h3>Explanation</h3>
         <p className="explanation-text">{p.explanation_text}</p>
       </section>
+
+      <TrustworthinessPanel />
     </div>
   );
 }

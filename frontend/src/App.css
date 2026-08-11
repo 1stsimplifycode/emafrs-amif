@@ -285,6 +285,86 @@ td {
   }
 }
 
+.trust-panel {
+  margin-top: 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.trust-panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--accent);
+  list-style: none;
+}
+
+.trust-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.trust-panel > summary::before {
+  content: "▸ ";
+}
+
+.trust-panel[open] > summary::before {
+  content: "▾ ";
+}
+
+.trust-findings {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.trust-finding {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel-bg);
+  border-radius: 0 6px 6px 0;
+}
+
+.trust-finding-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.trust-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.trust-value {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.trust-meaning {
+  margin: 4px 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.trust-source {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.trust-footer {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
 .app-footer {
   margin-top: 40px;
   padding-top: 16px;
