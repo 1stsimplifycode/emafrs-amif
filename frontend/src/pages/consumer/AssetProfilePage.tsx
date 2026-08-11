@@ -6,6 +6,8 @@ import { EvidenceConstellation } from "../../components/shared/EvidenceConstella
 import { EvidenceQualityPanel } from "../../components/shared/EvidenceQualityPanel";
 import { RegimeTimeline } from "../../components/shared/RegimeTimeline";
 import { TrustworthinessPanel } from "../../components/TrustworthinessPanel";
+import { friendlyErrorMessage } from "../../lib/errors";
+import { featureLabel } from "../../lib/featureLabels";
 import { directionPillClass, directionWord, pct, signed } from "../../lib/format";
 import "./AssetProfilePage.css";
 
@@ -39,7 +41,7 @@ export function AssetProfilePage() {
         if (e instanceof ApiError && e.status === 404) {
           setStatus("not-computed");
         } else {
-          setError(String(e));
+          setError(friendlyErrorMessage(`${ticker}'s prediction`));
           setStatus("error");
         }
       });
@@ -58,8 +60,8 @@ export function AssetProfilePage() {
       setStatus("ready");
       const h = await api.predictionHistory(ticker).catch(() => []);
       setHistory(h);
-    } catch (e) {
-      setError(String(e));
+    } catch {
+      setError(friendlyErrorMessage(`${ticker}'s outlook`));
     } finally {
       setComputing(false);
     }
@@ -128,7 +130,7 @@ export function AssetProfilePage() {
                     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
                     .map(([name, val]) => (
                       <div key={name} className="asset-attribution-item">
-                        <span className="text-muted">{name}</span>
+                        <span className="text-muted">{featureLabel(name)}</span>
                         <span className={val >= 0 ? "attr-positive numeric" : "attr-negative numeric"}>{signed(val)}</span>
                       </div>
                     ))}
@@ -149,7 +151,7 @@ export function AssetProfilePage() {
               <h2 className="display-md">What could change this outlook?</h2>
               <div className="card asset-counterfactual-card">
                 <p>
-                  Had <strong>{prediction.counterfactual.feature_name}</strong> differed by{" "}
+                  Had <strong>{featureLabel(prediction.counterfactual.feature_name)}</strong> differed by{" "}
                   <strong className="numeric">{signed(prediction.counterfactual.delta ?? 0, 3)}</strong> (from{" "}
                   <span className="numeric">{prediction.counterfactual.original_value.toFixed(3)}</span> to{" "}
                   <span className="numeric">{prediction.counterfactual.counterfactual_value?.toFixed(3)}</span>), the

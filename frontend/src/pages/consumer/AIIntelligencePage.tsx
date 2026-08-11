@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, ApiError } from "../../api";
 import type { PredictionResponse } from "../../api";
 import { EvidenceConstellation } from "../../components/shared/EvidenceConstellation";
+import { friendlyErrorMessage } from "../../lib/errors";
 import { modalityMeta, ALL_KNOWN_MODALITIES } from "../../lib/modalities";
 import { directionWord, pct } from "../../lib/format";
 import { useWatchlist } from "../../lib/watchlist";
@@ -40,7 +41,7 @@ export function AIIntelligencePage() {
         if (cancelled) return;
         if (e instanceof ApiError && e.status === 404) setStatus("not-computed");
         else {
-          setError(String(e));
+          setError(friendlyErrorMessage(`${focus}'s prediction`));
           setStatus("error");
         }
       });

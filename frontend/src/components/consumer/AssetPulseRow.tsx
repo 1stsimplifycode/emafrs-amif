@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { TickerPredictionState } from "../../lib/useMultiTickerPredictions";
 import { directionPillClass, directionWord, pct } from "../../lib/format";
+import { friendlyErrorMessage } from "../../lib/errors";
 
 interface Props {
   ticker: string;
@@ -19,7 +20,9 @@ export function AssetPulseRow({ ticker, state, onRemove }: Props) {
         <span className="text-faint pulse-status">No prediction yet — open to compute one</span>
       )}
 
-      {state.status === "error" && <span className="error-banner pulse-status">{state.message}</span>}
+      {state.status === "error" && (
+        <span className="error-banner pulse-status">{friendlyErrorMessage(`${ticker}'s outlook`)}</span>
+      )}
 
       {state.status === "ready" && (
         <>

@@ -91,6 +91,17 @@ export function ExplainabilityPage() {
           further explainer-shopping (e.g. SHAP) would be expected to reproduce the same
           result.
         </p>
+        <p className="text-faint">
+          <strong>Precision correction, not a separate finding:</strong> the raw
+          diagnostic run showed 100% of IG attribution mass on the financial modality,
+          0% on microstructure. Verified before drawing any conclusion from it: only 1 of
+          160 real test-set rows had real microstructure data available, and none of the
+          60 randomly-sampled diagnostic rows happened to include that one row — so
+          near-zero microstructure attribution is a direct, correct consequence of
+          microstructure being absent from the sample, not evidence the model ignores it
+          when genuinely present. The faithfulness result above is therefore a statement
+          about the financial-only decision surface, not a multimodal fusion problem.
+        </p>
       </div>
 
       <div className="card finding-card">
