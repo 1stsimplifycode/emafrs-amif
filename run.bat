@@ -39,18 +39,14 @@ if not exist ".env" (
     echo [3/5] .env already exists, leaving it as-is.
 )
 
-if not exist "frontend\node_modules" (
-    echo [4/5] Installing frontend dependencies ^(npm install^)...
-    pushd frontend
-    call npm install
-    popd
-    if errorlevel 1 (
-        echo ERROR: Frontend dependency install failed. See output above.
-        pause
-        exit /b 1
-    )
-) else (
-    echo [4/5] Frontend dependencies already installed, skipping.
+echo [4/5] Installing/updating frontend dependencies ^(npm install^)...
+pushd frontend
+call npm install
+popd
+if errorlevel 1 (
+    echo ERROR: Frontend dependency install failed. See output above.
+    pause
+    exit /b 1
 )
 
 if not exist "frontend\.env" (
