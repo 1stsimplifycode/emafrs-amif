@@ -237,3 +237,51 @@ this project's single-session pilots cannot simulate, or (b) resolving YouTube's
 IP-blocking (external, largely outside this project's control) to add a second, more
 historically-flexible source. Both are recorded as concrete next steps requiring
 additional data collection over time, not further code changes.
+
+## Follow-up 3: company-specific, publisher-targeted queries made text usable for the first time (real run)
+
+All prior pilots queried broad, macro-level terms ("Federal Reserve interest rate",
+"S&P 500 stock market") against a generic (unrestricted) NewsAPI search. This follow-up,
+built in response to a real user question about why YouTube/NewsAPI weren't targeting
+CNBC/Bloomberg specifically, made two real changes: (1) YouTube fetching now targets
+CNBC's and Bloomberg Television's specific, live-verified channel IDs directly (via
+`YouTubeClient.get_recent_uploads`, 1 quota unit/channel, not a keyword search) instead
+of a generic query; (2) NewsAPI fetching now uses the real `domains` filter
+(`cnbc.com,bloomberg.com`) and — critically, the actual cause of what changed here — is
+queried by **the specific ticker symbol being predicted** (e.g. "MSFT") rather than a
+broad macro phrase.
+
+**Real result** (`tests/integration/test_mlops_pipeline.py::test_full_pipeline_with_include_text_real_data`,
+reproduced twice): for MSFT, `run_training_and_prediction_pipeline(..., include_text=True)`
+produced a live prediction with **`modalities=['financial', 'microstructure', 'text']`**
+— text modality genuinely present and contributing (financial 33.5%, microstructure
+33.0%, text 33.5%), for the first time in this project's history. YouTube's transcripts
+were IP-blocked again as usual (the same, already-documented, unresolved external
+limitation), so this real result comes entirely from the domain-targeted NewsAPI path.
+
+**Root cause of why this worked when nothing else did**: a company-specific ticker query
+against real financial-news publishers gets covered far more consistently, day over day,
+than a macro-event-triggered query — MSFT is mentioned in CNBC/Bloomberg coverage on most
+real trading days, which is enough to clear the rolling z-score's `min_periods=3`
+warm-up requirement (the same requirement that blocked every earlier pilot). This is a
+genuine, reproducible, positive result for company-specific tickers, not a fix to the
+underlying sparsity problem in general — a broad macro query would very likely still fail
+the same way prior pilots did, since the root cause (NewsAPI's ~29-day lookback + the
+warm-up requirement) hasn't changed, only the query's real coverage density has.
+
+**Honest caveats, not overclaimed:**
+- `signal_consistency` for this run was `0.0` (ambiguous) — text's real contribution was
+  present but not resolving any particular directional agreement/conflict.
+- RAMA's fusion weights across all three modalities were nearly equal
+  (33.0-33.5%), consistent with the already-documented finding that this architecture
+  does not learn dramatic modality reweighting on real data (`docs/EXPERIMENT_PROTOCOL.md`
+  §Regime Analysis) — text being "included" does not mean it's driving the prediction.
+- `top_attributions` (the model-attributed evidence shown in explanations) still only
+  ever reports financial features by design (`training_pipeline.py`); text's specific
+  per-feature attribution is not currently surfaced, only its aggregate fusion weight.
+- This is opt-in (`include_text=True`), off by default, because it adds real network
+  latency and consumes real YouTube/NewsAPI quota on every request — see
+  `training_pipeline.py`'s `_fetch_real_text_daily` docstring.
+- Not yet re-tested across many tickers/days to establish how often this actually
+  succeeds vs. still lands at `text_available=0` — this is one genuine positive result,
+  not a claim that the underlying data-scarcity problem is solved in general.

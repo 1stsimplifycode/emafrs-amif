@@ -181,6 +181,100 @@ def fetch_video_affective_records(
     return records, stats
 
 
+def _process_video_items(
+    client: YouTubeClient, items: list[dict], entity: str, asem: AffectiveSignalExtractionModule,
+    max_chars: int, transcript_request_delay_seconds: float,
+) -> tuple[list[dict], int]:
+    """Shared transcript-fetch + ASEM processing for a list of already-found video items
+    (regardless of whether they came from a keyword search or a specific channel's
+    uploads) -- one implementation, so the two discovery paths below can't drift."""
+    records: list[dict] = []
+    n_with_transcript = 0
+    for item in items:
+        try:
+            text, _ = client.get_transcript_text(item["video_id"])
+        except Exception as exc:
+            logger.warning("Transcript fetch failed for video_id=%s: %s", item["video_id"], exc)
+            continue
+        finally:
+            if transcript_request_delay_seconds > 0:
+                time.sleep(transcript_request_delay_seconds)
+        if text is None:
+            continue
+        n_with_transcript += 1
+        text = text[:max_chars]
+
+        published_at = datetime.fromisoformat(item["published_at"].replace("Z", "+00:00"))
+        fields = _process_text_with_asem(
+            asem, text, "youtube", entity, published_at,
+            {"channel_id": item["channel_id"], "video_id": item["video_id"], "channel_title": item.get("channel_title")},
+        )
+        if fields is None:
+            continue
+
+        records.append({
+            "source": "youtube",
+            "item_id": item["video_id"],
+            "title": item["title"],
+            "published_at": item["published_at"],
+            **fields,
+        })
+    return records, n_with_transcript
+
+
+def fetch_channel_video_affective_records(
+    start_date: datetime,
+    end_date: datetime,
+    channel_ids: dict[str, str] | None = None,
+    max_results_per_channel: int = 10,
+    max_chars: int = 2000,
+    asem: AffectiveSignalExtractionModule | None = None,
+    transcript_request_delay_seconds: float = 1.5,
+) -> tuple[list[dict], VideoProcessingStats]:
+    """Real, PUBLISHER-TARGETED alternative to `fetch_video_affective_records`'s generic
+    keyword search: fetches recent uploads from SPECIFIC, live-verified channels (default:
+    `KNOWN_FINANCIAL_NEWS_CHANNELS` -- CNBC and Bloomberg Television, both verified live
+    via channels().list before being hardcoded, see youtube_client.py) via
+    `YouTubeClient.get_recent_uploads`, which costs 1 quota unit per channel (a
+    channels.list + playlistItems.list call) instead of search_videos's 100 units per
+    call -- and, unlike a keyword search, is guaranteed to be from that exact publisher,
+    not whatever ranked for the query. Same real transcript-IP-blocking limitation as
+    `fetch_video_affective_records` applies (see that function's docstring and
+    docs/LIMITATIONS.md) -- channel targeting fixes WHICH videos are searched, not
+    whether YouTube blocks transcript requests from this environment."""
+    from emafrs.data.youtube_client import KNOWN_FINANCIAL_NEWS_CHANNELS
+
+    channel_ids = channel_ids or KNOWN_FINANCIAL_NEWS_CHANNELS
+    client = YouTubeClient()
+    asem = asem or AffectiveSignalExtractionModule()
+
+    all_records: list[dict] = []
+    n_found = 0
+    n_with_transcript_total = 0
+
+    for name, channel_id in channel_ids.items():
+        try:
+            items, _ = client.get_recent_uploads(channel_id, start_date, max_results=max_results_per_channel)
+        except Exception as exc:
+            logger.warning("YouTube get_recent_uploads failed for channel=%s (%s): %s", name, channel_id, exc)
+            continue
+        items = [it for it in items if datetime.fromisoformat(it["published_at"].replace("Z", "+00:00")) <= end_date]
+        n_found += len(items)
+
+        records, n_with_transcript = _process_video_items(
+            client, items, name, asem, max_chars, transcript_request_delay_seconds
+        )
+        n_with_transcript_total += n_with_transcript
+        all_records.extend(records)
+
+    stats = VideoProcessingStats(
+        n_windows_searched=len(channel_ids), n_videos_found=n_found,
+        n_transcripts_available=n_with_transcript_total, n_videos_processed=len(all_records),
+        youtube_quota_units_used=len(channel_ids) * 2,  # channels.list (1) + playlistItems.list (1) per channel
+    )
+    return all_records, stats
+
+
 def fetch_news_affective_records(
     query: str,
     start_date: datetime,
@@ -188,6 +282,7 @@ def fetch_news_affective_records(
     page_size: int = 50,
     max_chars: int = 1000,
     asem: AffectiveSignalExtractionModule | None = None,
+    domains: str | None = None,
 ) -> tuple[list[dict], NewsProcessingStats]:
     """Searches NewsAPI for `query` across [start_date, end_date] (a SINGLE call -- no
     chunking needed since the free tier's own ~1-month lookback cap makes multi-window
@@ -196,11 +291,15 @@ def fetch_news_affective_records(
     Uses `title + ". " + description` as the ASEM input, NOT `content` -- NewsAPI's free
     tier truncates `content` to ~200 characters with a "[+N chars]" paywall notice
     appended, which is not real article text; `description` is a real, untruncated
-    provider-written summary field."""
+    provider-written summary field.
+
+    `domains`: pass `emafrs.data.newsapi_client.KNOWN_FINANCIAL_NEWS_DOMAINS` (or any
+    comma-separated NewsAPI domains string) to restrict results to those publishers
+    specifically -- real NewsAPI capability, previously unexposed by this pipeline."""
     client = NewsAPIClient()
     asem = asem or AffectiveSignalExtractionModule()
 
-    articles, _ = client.search(query, start_date.date(), end_date.date(), page_size=page_size)
+    articles, _ = client.search(query, start_date.date(), end_date.date(), page_size=page_size, domains=domains)
 
     records: list[dict] = []
     for article in articles:

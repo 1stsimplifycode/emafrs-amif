@@ -81,8 +81,19 @@ against real order-book dynamics, until/unless a Level-2 data source is added.
   computed. This is now precisely characterized as a genuine additional-data-required
   limitation (needs real elapsed time across multiple collection runs to accumulate 3+
   distinct trading days, or resolving YouTube's IP-blocking to add a second source), not
-  a remaining implementation bug. All 3-modality training results to date are explicitly
-  reported as uninformative about text modality value, never as evidence it doesn't help.
+  a remaining implementation bug.
+  **Update: text modality became usable for the first time in a real run, for
+  company-specific tickers.** Switching from broad macro queries to publisher-targeted
+  (CNBC/Bloomberg via real `domains`/channel-ID filtering) queries **for the specific
+  ticker being predicted** gave MSFT enough real, distinct daily NewsAPI coverage to
+  clear the z-score warm-up — `modalities=['financial', 'microstructure', 'text']` in a
+  real, reproduced run (opt-in via `include_text=True`, off by default; see
+  `docs/TEXT_MODALITY_PILOT.md` "Follow-up 3" for the full account, including the honest
+  caveats: `signal_consistency` was ambiguous, RAMA's fusion weights stayed near-equal
+  across modalities, and this has not yet been checked across many tickers/days to know
+  how often it succeeds vs. still lands at zero). All EARLIER 3-modality training results
+  in this document remain reported as uninformative; this new result is real, positive,
+  and separately caveated, not blended into the earlier null findings.
 
 ## Data sources
 

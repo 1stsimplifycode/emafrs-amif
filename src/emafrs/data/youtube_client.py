@@ -34,6 +34,18 @@ LICENSE_NOTE = (
     "transcripts are auto-generated or creator-provided captions, not verified transcripts."
 )
 
+# Real, live-verified YouTube channel IDs for major financial-news publishers -- resolved
+# via channels().list(forHandle=...) and checked against subscriber count/description
+# before being hardcoded here (a wrong handle can silently resolve to an unrelated
+# channel: '@BloombergTelevision' was tried and found to resolve to an 89-subscriber
+# unrelated channel, NOT Bloomberg -- '@markets' is Bloomberg's real, verified TV channel,
+# 3.24M subscribers). Do not add a handle/ID here without live-verifying it the same way;
+# a wrong ID here would silently misattribute unrelated content as CNBC/Bloomberg.
+KNOWN_FINANCIAL_NEWS_CHANNELS = {
+    "CNBC": "UCvJJ_dzjViJCoLf5uKUTwoA",  # verified via forHandle='@CNBC': title "CNBC", 4.17M subs, official channel
+    "Bloomberg Television": "UCIALMKvObZNtJ6AmdCLP7Lg",  # verified via forHandle='@markets': title "Bloomberg Television", 3.24M subs
+}
+
 
 class YouTubeClient:
     provider = "youtube"
@@ -84,6 +96,69 @@ class YouTubeClient:
             license_note=LICENSE_NOTE,
         )
         return items, record
+
+    def get_recent_uploads(
+        self, channel_id: str, published_after: datetime, max_results: int = 15
+    ) -> tuple[list[dict], SourceRecord]:
+        """Real recent uploads from ONE SPECIFIC channel (e.g. a verified CNBC/Bloomberg
+        channel ID from KNOWN_FINANCIAL_NEWS_CHANNELS), via playlistItems.list against
+        that channel's uploads playlist -- 1 quota unit total (a channels.list lookup +
+        one playlistItems.list call, each 1 unit), vs. search_videos()'s 100 units for a
+        keyword search that isn't targeted at any specific publisher at all. Returns
+        genuinely recent uploads in reverse-chronological order, not a relevance ranking."""
+        fetched_at = datetime.now(timezone.utc)
+        try:
+            channel_resp = self._service.channels().list(part="contentDetails", id=channel_id).execute()
+            channel_items = channel_resp.get("items", [])
+            if not channel_items:
+                record = SourceRecord(
+                    provider=self.provider, endpoint="get_recent_uploads", fetched_at=fetched_at,
+                    observation_time=None, entity=channel_id,
+                    fields={"n_results": 0, "error": "channel_id not found"}, license_note=LICENSE_NOTE,
+                )
+                return [], record
+            uploads_playlist_id = channel_items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+            resp = self._service.playlistItems().list(
+                part="snippet", playlistId=uploads_playlist_id, maxResults=max_results
+            ).execute()
+        except HttpError as exc:
+            raise RuntimeError(f"YouTube get_recent_uploads failed for channel_id={channel_id!r}: {exc}") from exc
+
+        items = []
+        for it in resp.get("items", []):
+            snippet = it["snippet"]
+            published_at = datetime.fromisoformat(snippet["publishedAt"].replace("Z", "+00:00"))
+            if published_at < published_after:
+                continue  # playlist is reverse-chronological, but filter explicitly rather than assume
+            items.append({
+                "video_id": snippet["resourceId"]["videoId"],
+                "title": snippet["title"],
+                "channel_title": snippet["channelTitle"],
+                "channel_id": snippet["channelId"],
+                "published_at": snippet["publishedAt"],
+                "description": snippet["description"],
+            })
+
+        record = SourceRecord(
+            provider=self.provider,
+            endpoint="get_recent_uploads",
+            fetched_at=fetched_at,
+            observation_time=None,
+            entity=channel_id,
+            fields={"n_results": len(items), "published_after": str(published_after)},
+            license_note=LICENSE_NOTE,
+        )
+        return items, record
+
+    def resolve_channel_id(self, handle: str) -> str | None:
+        """1 quota unit. Resolves a real YouTube handle (e.g. '@CNBC') to its channel ID --
+        used to VERIFY a handle before adding it to KNOWN_FINANCIAL_NEWS_CHANNELS, not
+        called on every fetch (the resolved IDs are hardcoded above once verified, so
+        routine fetching doesn't spend quota re-resolving a handle that doesn't change)."""
+        resp = self._service.channels().list(part="id", forHandle=handle).execute()
+        items = resp.get("items", [])
+        return items[0]["id"] if items else None
 
     def get_transcript_text(self, video_id: str) -> tuple[str | None, SourceRecord]:
         """Returns (transcript_text_or_None, provenance_record). None means no transcript

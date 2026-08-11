@@ -106,3 +106,25 @@ def test_full_training_and_prediction_pipeline_real_data():
         session.close()
 
     print(f"\nReal pipeline explanation for {TICKER}:\n{record.explanation_text}")
+
+
+def test_full_pipeline_with_include_text_real_data():
+    """Real end-to-end run with include_text=True -- exercises the channel-targeted
+    YouTube fetch, domain-targeted NewsAPI fetch, and text_daily join, all for real. Does
+    NOT assert text ends up available (every real pilot to date has landed at
+    text_available=0 for real, diagnosed reasons -- docs/TEXT_MODALITY_PILOT.md); it
+    asserts the attempt runs successfully end-to-end and the result is internally
+    consistent with whatever real data volume this run actually got, never fabricated."""
+    record = run_training_and_prediction_pipeline("MSFT", epochs=15, patience=5, include_text=True)
+
+    assert record.id is not None
+    assert record.direction in (-1, 0, 1)
+    n_modalities = len(record.modality_weights_json)
+    assert n_modalities >= 1
+    if n_modalities >= 2:
+        assert record.signal_consistency is not None
+        assert -1.0 <= record.signal_consistency <= 1.0
+    else:
+        assert record.signal_consistency is None
+
+    print(f"\ninclude_text=True real run: modalities={list(record.modality_weights_json.keys())}")

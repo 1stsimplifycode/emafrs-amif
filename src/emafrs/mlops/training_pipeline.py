@@ -2,20 +2,21 @@
 checkpoint -> compute XAI for the most recent available row -> persist the prediction.
 
 This is the function the API's predict endpoint calls (synchronously, for a demo-scale
-deployment) and that a scheduled background job (emafrs.mlops.scheduler) calls
-periodically for a production-like refresh pattern. Both paths go through this one
-function so there is a single source of truth for "how a prediction gets made."
+deployment) and that emafrs.mlops.scheduler calls periodically for a production-like
+refresh pattern. Both paths go through this one function so there is a single source of
+truth for "how a prediction gets made."
 """
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 import torch
 
 from emafrs.db.models import PredictionRecord
 from emafrs.db.session import get_session
 from emafrs.mlops.model_registry import save_model
-from emafrs.models.dataset import build_daily_dataset
+from emafrs.models.dataset import build_daily_dataset_from_ohlcv
 from emafrs.models.train import train_fusion_model
 from emafrs.regime.hmm_regime import REGIME_NAMES
 from emafrs.risk.cross_modal_conflict import compute_agreement, modality_direction_from_attributions
@@ -28,18 +29,94 @@ logger = logging.getLogger("emafrs.mlops")
 DIRECTION_FROM_CLASS_IDX = {0: -1, 1: 0, 2: 1}
 
 
+def _fetch_real_text_daily(ticker: str, trading_days):
+    """Real, opt-in text-modality fetch for a live prediction: channel-targeted YouTube
+    (CNBC/Bloomberg, live-verified channel IDs) + domain-targeted NewsAPI (cnbc.com,
+    bloomberg.com), over NewsAPI's real ~29-day lookback window (querying further back
+    is pointless on the free tier -- see emafrs.nlp.text_dataset's module docstring).
+    Mapped forward-only (never backward) onto `trading_days` so non-trading-day articles
+    aren't silently dropped (see aggregate_daily_text_features's `trading_days` param).
+
+    Every real pilot run to date (docs/TEXT_MODALITY_PILOT.md) has still ended up with
+    text_available=0 in every split -- either from YouTube's IP-blocking or NewsAPI's
+    z-score-warm-up-vs-lookback-window mismatch. This function does not fix that; it
+    makes the attempt real and repeatable (and channel/domain-targeted, unlike the
+    original pilots' generic keyword search) rather than skipping the attempt entirely.
+    Returns whatever real data resulted, honestly -- often an empty-but-correctly-shaped
+    frame, never a fabricated one."""
+    from emafrs.data.newsapi_client import KNOWN_FINANCIAL_NEWS_DOMAINS
+    from emafrs.nlp.asem import AffectiveSignalExtractionModule
+    from emafrs.nlp.text_dataset import (
+        aggregate_daily_text_features,
+        fetch_channel_video_affective_records,
+        fetch_news_affective_records,
+    )
+
+    now = datetime.now(timezone.utc)
+    asem = AffectiveSignalExtractionModule()
+
+    yt_records, yt_stats = fetch_channel_video_affective_records(
+        now - timedelta(days=7), now, max_results_per_channel=5, max_chars=2000, asem=asem,
+    )
+    logger.info(
+        "Live text fetch (YouTube, channel-targeted): found=%d processed=%d quota=%d",
+        yt_stats.n_videos_found, yt_stats.n_videos_processed, yt_stats.youtube_quota_units_used,
+    )
+
+    news_records, news_stats = fetch_news_affective_records(
+        ticker, now - timedelta(days=29), now, page_size=20, max_chars=1000,
+        asem=asem, domains=KNOWN_FINANCIAL_NEWS_DOMAINS,
+    )
+    logger.info(
+        "Live text fetch (NewsAPI, domain-targeted): found=%d processed=%d",
+        news_stats.n_articles_found, news_stats.n_articles_processed,
+    )
+
+    combined = yt_records + news_records
+    return aggregate_daily_text_features(combined, trading_days=trading_days)
+
+
 def run_training_and_prediction_pipeline(
-    ticker: str, epochs: int = 100, patience: int = 12, seed: int = 42
+    ticker: str, epochs: int = 100, patience: int = 12, seed: int = 42, include_text: bool = False,
 ) -> PredictionRecord:
     """Trains a fresh RAMA model on `ticker` and produces a persisted prediction (with
     explanation) for the most recent row in the dataset. Real computation, real data --
-    nothing here is templated or precomputed."""
+    nothing here is templated or precomputed.
+
+    `include_text`: opt-in (default False, preserving the existing fast/quota-free
+    behavior). When True, attempts a real, channel/domain-targeted text fetch (see
+    `_fetch_real_text_daily`) before building the dataset, so "text" becomes a genuine
+    candidate modality if -- and only if -- real data actually supports it for this
+    specific run. Adds real network latency and consumes real YouTube/NewsAPI quota."""
+    from emafrs.data.yfinance_client import YFinanceClient
+
+    logger.info("Fetching OHLCV for %s", ticker)
+    df, _ = YFinanceClient().get_ohlcv(ticker, period="5y", interval="1d")
+    intraday_df = None
+    try:
+        intraday_df, _ = YFinanceClient().get_intraday_1m(ticker)
+    except Exception:
+        intraday_df = None
+
+    text_daily = None
+    if include_text:
+        try:
+            text_daily = _fetch_real_text_daily(ticker, df.index)
+        except Exception as exc:
+            logger.warning("Live text fetch failed for %s, proceeding without it: %s", ticker, exc)
+            text_daily = None
+
     logger.info("Building dataset for %s", ticker)
-    bundle = build_daily_dataset(ticker, period="5y", horizon=1, deadzone=0.0025)
+    bundle = build_daily_dataset_from_ohlcv(
+        df, ticker, horizon=1, deadzone=0.0025, include_microstructure=True,
+        intraday_df=intraday_df, text_daily=text_daily,
+    )
 
     modality_cols = {"financial": bundle.financial_columns}
     if len(bundle.microstructure_columns) > 1:
         modality_cols["microstructure"] = bundle.microstructure_columns
+    if len(bundle.text_columns) > 1:  # more than just the always-present "text_available" flag column
+        modality_cols["text"] = bundle.text_columns
 
     logger.info("Training RAMA model for %s", ticker)
     model, result, _weights = train_fusion_model(

@@ -6,6 +6,7 @@ returns a canned/example response.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -35,7 +36,34 @@ DIRECTION_LABELS = {-1: "bearish", 0: "neutral", 1: "bullish"}
 async def _lifespan(_app: FastAPI):
     init_db()
     logger.info("EMAFRS API started (version %s)", APP_VERSION)
+
+    scheduler_task = None
+    from emafrs.mlops.scheduler import run_scheduler_loop, scheduler_config_from_env
+
+    cfg = scheduler_config_from_env()
+    if cfg["enabled"]:
+        logger.info(
+            "Starting scheduler: interval=%ds tickers=%s refresh_health=%s refresh_predictions=%s "
+            "health_live_probe=%s include_text=%s",
+            cfg["interval_seconds"], cfg["tickers"], cfg["refresh_health"], cfg["refresh_predictions"],
+            cfg["health_live_probe"], cfg["include_text"],
+        )
+        scheduler_task = asyncio.create_task(run_scheduler_loop(
+            interval_seconds=cfg["interval_seconds"], tickers=cfg["tickers"],
+            refresh_health=cfg["refresh_health"], refresh_preds=cfg["refresh_predictions"],
+            health_live_probe=cfg["health_live_probe"], include_text=cfg["include_text"],
+        ))
+    else:
+        logger.info("Scheduler disabled (SCHEDULER_ENABLED=false)")
+
     yield
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -117,15 +145,19 @@ def get_latest_prediction(ticker: str) -> PredictionResponse:
 
 
 @app.post("/api/v1/predictions/{ticker}/refresh", response_model=PredictionResponse)
-def refresh_prediction(ticker: str) -> PredictionResponse:
+def refresh_prediction(
+    ticker: str,
+    include_text: bool = Query(False, description="Attempt a real, channel/domain-targeted YouTube+NewsAPI text fetch before training (adds real latency and consumes real API quota; see training_pipeline.py). Off by default."),
+) -> PredictionResponse:
     """Runs the REAL training + inference + XAI pipeline for `ticker` synchronously and
     persists the result. This is a demo-scale synchronous pattern (training takes roughly
-    10-30 seconds on CPU) -- see docs/PRODUCTION_DEPLOYMENT.md for the background-worker
-    pattern a higher-traffic deployment should use instead."""
+    10-30 seconds on CPU, longer with include_text=true) -- see
+    docs/PRODUCTION_DEPLOYMENT.md for the background-worker pattern a higher-traffic
+    deployment should use instead."""
     from emafrs.mlops.training_pipeline import run_training_and_prediction_pipeline
 
     try:
-        record = run_training_and_prediction_pipeline(ticker.upper())
+        record = run_training_and_prediction_pipeline(ticker.upper(), include_text=include_text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _to_prediction_response(record)

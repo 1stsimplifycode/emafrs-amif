@@ -20,6 +20,11 @@ LICENSE_NOTE = (
     "non-commercial use only, attribution required. See newsapi.org/terms."
 )
 
+# Real domains NewsAPI indexes for these publishers -- used with the `domains` filter
+# above so a "CNBC/Bloomberg" query is actually restricted to their real published
+# articles, not a generic keyword search that might return any outlet.
+KNOWN_FINANCIAL_NEWS_DOMAINS = "cnbc.com,bloomberg.com"
+
 
 class NewsAPIClient(BaseAPIClient):
     provider = "newsapi"
@@ -37,10 +42,17 @@ class NewsAPIClient(BaseAPIClient):
         language: str = "en",
         sort_by: str = "publishedAt",
         page_size: int = 100,
+        domains: str | None = None,
     ) -> tuple[list[dict], SourceRecord]:
         """Raises ValueError with the provider's own error message on failure/quota
         exhaustion rather than returning an empty list silently, so callers can
-        distinguish 'no news found' from 'source unavailable'."""
+        distinguish 'no news found' from 'source unavailable'.
+
+        `domains`: NewsAPI's real `domains` filter (comma-separated, e.g.
+        "cnbc.com,bloomberg.com") -- restricts results to those publishers specifically,
+        rather than a generic keyword search across every source NewsAPI indexes. This
+        parameter existed on NewsAPI's real API all along; this client just didn't expose
+        it until now."""
         params = {
             "q": query,
             "from": from_date.isoformat(),
@@ -50,6 +62,8 @@ class NewsAPIClient(BaseAPIClient):
             "pageSize": page_size,
             "apiKey": self.api_key,
         }
+        if domains:
+            params["domains"] = domains
         payload, fetched_at, cache_hit = self.cached_get_json(
             "everything", _BASE_URL, params=params, ttl_seconds=1800
         )

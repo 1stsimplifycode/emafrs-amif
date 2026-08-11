@@ -37,6 +37,17 @@ configuration.
 - Update `CORS_ORIGINS` in `render.yaml` (or the Render dashboard) to the real Vercel
   URL once the frontend is deployed (see below), then redeploy — otherwise the browser
   will block the frontend's requests to this backend.
+- **The real background scheduler (`emafrs.mlops.scheduler`) is enabled by default**
+  (`SCHEDULER_ENABLED=true` in `render.yaml`) and refreshes real data-source health and
+  real predictions for 5 default tickers every 6 hours. Two real consequences worth
+  knowing before deploying: (1) since the process is never truly idle, this may prevent
+  Render's free-tier 15-minute inactivity spin-down from ever triggering (no cold
+  starts, but check this against whatever Render's current free-tier usage limits are at
+  the time you deploy — those change over time and this doc can't track them for you);
+  (2) with `SCHEDULER_INCLUDE_TEXT=false` (the default), each cycle spends only CPU time,
+  no News/YouTube quota — set it to `true` only after reading
+  `scheduler.py`'s module docstring for the real quota math, since NewsAPI's free tier
+  caps at 100 requests/day.
 
 ## Frontend: Vercel
 

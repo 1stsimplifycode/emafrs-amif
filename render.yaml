@@ -27,3 +27,16 @@ services:
         sync: false
       - key: SEC_EDGAR_USER_AGENT
         value: "EMAFRS-Research-Reconstruction you@example.com"
+      # Real background scheduler (emafrs.mlops.scheduler) -- see docs/DEPLOYMENT.md for
+      # the real quota/uptime tradeoffs of running this on Render's free tier before
+      # changing these.
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: SCHEDULER_INTERVAL_SECONDS
+        value: "21600"
+      - key: SCHEDULER_TICKERS
+        value: "SPY,QQQ,AAPL,MSFT,NVDA"
+      - key: SCHEDULER_HEALTH_LIVE_PROBE
+        value: "false"
+      - key: SCHEDULER_INCLUDE_TEXT
+        value: "false"
